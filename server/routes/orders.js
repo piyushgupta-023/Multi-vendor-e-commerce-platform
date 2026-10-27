@@ -1,13 +1,20 @@
 const express = require('express');
 const router = express.Router();
-const { createOrder, getMyOrders, getOrderById, updateSubOrderStatus, cancelOrder } = require('../controllers/orderController');
-const { protect, authorize } = require('../middlewares/auth');
+const orderController = require('../controllers/orderController');
+const { protect, authorizeRoles } = require('../middlewares/authMiddleware');
 
 router.use(protect);
-router.post('/create', authorize('customer'), createOrder);
-router.get('/my-orders', authorize('customer'), getMyOrders);
-router.get('/:id', getOrderById);
-router.put('/suborder/:id/status', authorize('vendor'), updateSubOrderStatus);
-router.post('/:id/cancel', authorize('customer'), cancelOrder);
+
+// Customer Checkout & Orders
+router.post('/checkout', orderController.checkout);
+router.post('/create', orderController.checkout); // Alias
+router.get('/my-orders', orderController.getMyOrders);
+router.get('/:id/invoice', orderController.downloadInvoice);
+router.get('/:id', orderController.getOrderById);
+
+// Vendor Order Lifecycle updates via /api/orders (if called directly)
+router.get('/vendor/all', authorizeRoles('vendor', 'admin'), orderController.getVendorOrders);
+router.patch('/suborder/:subOrderId/status', authorizeRoles('vendor', 'admin'), orderController.updateSubOrderStatus);
+router.put('/suborder/:subOrderId/status', authorizeRoles('vendor', 'admin'), orderController.updateSubOrderStatus);
 
 module.exports = router;

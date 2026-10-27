@@ -114,6 +114,8 @@ export default function Navbar() {
     showToast?.(`Active perspective: ${roleId === 'vendor' ? 'Merchant' : roleId === 'admin' ? 'Admin' : 'Buyer'}`, 'info');
     if (roleId === 'vendor') {
       navigate('/vendor/dashboard');
+    } else if (roleId === 'admin') {
+      navigate('/admin/dashboard');
     } else if (roleId === 'customer') {
       navigate('/');
     }
@@ -152,6 +154,7 @@ export default function Navbar() {
       await demoLogin(roleType);
       showToast?.(`Logged in as demo ${roleType}!`, 'success');
       if (roleType === 'vendor') navigate('/vendor/dashboard');
+      if (roleType === 'admin') navigate('/admin/dashboard');
     } catch {
       showToast?.('Demo login failed', 'error');
     }
@@ -409,6 +412,15 @@ export default function Navbar() {
                               <span>Explore Marketplace</span>
                             </Link>
 
+                            <Link
+                              to="/orders"
+                              onClick={() => setUserDropdown(false)}
+                              className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-700 hover:bg-slate-100 font-medium"
+                            >
+                              <Package size={14} className="text-indigo-600" />
+                              <span>Your Orders & Deliveries</span>
+                            </Link>
+
                             {(user.role === 'vendor' || activeRole === 'vendor' || user.role === 'admin') && (
                               <>
                                 <p className="px-2 pt-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
@@ -437,6 +449,22 @@ export default function Navbar() {
                                 >
                                   <PlusCircle size={14} className="text-slate-500" />
                                   <span>Add New Product</span>
+                                </Link>
+                              </>
+                            )}
+
+                            {(user.role === 'admin' || activeRole === 'admin') && (
+                              <>
+                                <p className="px-2 pt-2 py-1 text-[10px] font-bold uppercase tracking-wider text-purple-500">
+                                  Admin Controls
+                                </p>
+                                <Link
+                                  to="/admin/dashboard"
+                                  onClick={() => setUserDropdown(false)}
+                                  className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-700 hover:bg-slate-100 font-medium"
+                                >
+                                  <Shield size={14} className="text-purple-600" />
+                                  <span>Admin Analytics Center</span>
                                 </Link>
                               </>
                             )}
@@ -512,6 +540,16 @@ export default function Navbar() {
                   )}
                 </AnimatePresence>
               </div>
+
+              {/* Returns & Orders */}
+              <Link
+                to="/orders"
+                className="hidden lg:flex flex-col py-1.5 px-2 rounded-sm hover:ring-1 hover:ring-white transition-all text-left cursor-pointer leading-tight"
+                title="View Orders & Delivery Stepper"
+              >
+                <span className="text-[11px] text-slate-400 font-normal">Returns</span>
+                <span className="text-xs font-bold text-white">& Orders</span>
+              </Link>
 
               {/* Wishlist / Saved Items */}
               <button

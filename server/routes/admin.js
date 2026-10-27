@@ -1,35 +1,30 @@
 const express = require('express');
 const router = express.Router();
-const {
-  getDashboard, getAllUsers, toggleUserStatus,
-  getPendingVendors, approveVendor, rejectVendor,
-  getAllOrders, getPaymentSplits, updateCommissionRate,
-  moderateReview, featureProduct
-} = require('../controllers/adminController');
-const { protect, authorize } = require('../middlewares/auth');
+const adminController = require('../controllers/adminController');
+const { protect, authorizeRoles } = require('../middlewares/authMiddleware');
 
-router.use(protect, authorize('admin'));
+// Admin protected routes
+router.use(protect);
+router.use(authorizeRoles('admin'));
 
-router.get('/dashboard', getDashboard);
+// Analytics & Dashboard
+router.get('/dashboard', adminController.getDashboard);
+router.get('/analytics', adminController.getDashboard);
+
+// Vendor management & approval toggle
+router.get('/vendors', adminController.getAllVendors);
+router.get('/vendors/pending', adminController.getPendingVendors);
+router.patch('/vendors/:id/approve', adminController.approveVendor);
+router.patch('/vendors/:id/reject', adminController.rejectVendor);
+router.patch('/vendors/:id/toggle-approval', adminController.toggleVendorApproval);
+router.patch('/vendors/:vendorProfileId/commission', adminController.updateCommissionRate);
 
 // User management
-router.get('/users', getAllUsers);
-router.patch('/users/:id/toggle-status', toggleUserStatus);
-
-// Vendor management
-router.get('/vendors/pending', getPendingVendors);
-router.patch('/vendors/:id/approve', approveVendor);
-router.patch('/vendors/:id/reject', rejectVendor);
-router.patch('/vendors/:vendorProfileId/commission', updateCommissionRate);
+router.get('/users', adminController.getAllUsers);
+router.patch('/users/:id/toggle-status', adminController.toggleUserStatus);
 
 // Order management
-router.get('/orders', getAllOrders);
-
-// Payment splits
-router.get('/payment-splits', getPaymentSplits);
-
-// Content moderation
-router.patch('/reviews/:id/moderate', moderateReview);
-router.patch('/products/:id/feature', featureProduct);
+router.get('/orders', adminController.getAllOrders);
+router.get('/payment-splits', adminController.getPaymentSplits);
 
 module.exports = router;

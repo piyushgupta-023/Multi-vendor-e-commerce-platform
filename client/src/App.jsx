@@ -12,13 +12,19 @@ import Footer from './components/layout/Footer';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import CheckoutPage from './pages/CheckoutPage';
+import OrdersPage from './pages/OrdersPage';
 
-// Vendor Layout & Pages (Step 3)
+// Vendor Layout & Pages (Step 3 & Step 5)
 import VendorLayout from './layouts/VendorLayout';
 import VendorDashboardPage from './pages/vendor/VendorDashboardPage';
 import VendorProductsPage from './pages/vendor/VendorProductsPage';
 import VendorProductFormPage from './pages/vendor/VendorProductFormPage';
+import VendorOrdersPage from './pages/vendor/VendorOrdersPage';
 import VendorSettingsPage from './pages/vendor/VendorSettingsPage';
+
+// Admin Page (Step 7)
+import AdminDashboardPage from './pages/admin/AdminDashboardPage';
 
 function Toast() {
   const { toast } = useStore();
@@ -47,10 +53,11 @@ function MainLayout() {
   const location = useLocation();
   const isAuthPage = location.pathname === '/login' || location.pathname === '/register';
   const isVendorPage = location.pathname.startsWith('/vendor');
-  const hideCustomerChrome = isAuthPage || isVendorPage;
+  const isAdminPage = location.pathname.startsWith('/admin');
+  const hideCustomerChrome = isAuthPage || isVendorPage || isAdminPage;
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#f8f9fa] text-slate-900 font-sans antialiased selection:bg-indigo-500 selection:text-white">
+    <div className="min-h-screen flex flex-col bg-[#f8f9fa] text-slate-900 font-sans antialiased selection:bg-amber-400 selection:text-slate-950">
       {!hideCustomerChrome && <Navbar />}
       
       <main className={`flex-1 ${isAuthPage ? 'flex flex-col' : ''}`}>
@@ -59,6 +66,18 @@ function MainLayout() {
           <Route path="/" element={<HomePage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/checkout" element={<CheckoutPage />} />
+          <Route path="/orders" element={<OrdersPage />} />
+
+          {/* Admin Protected Routes */}
+          <Route
+            path="/admin/dashboard"
+            element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <AdminDashboardPage />
+              </ProtectedRoute>
+            }
+          />
 
           {/* Vendor Protected Routes (Vendor & Admin) */}
           <Route
@@ -74,6 +93,7 @@ function MainLayout() {
             <Route path="products" element={<VendorProductsPage />} />
             <Route path="products/new" element={<VendorProductFormPage />} />
             <Route path="products/edit/:id" element={<VendorProductFormPage />} />
+            <Route path="orders" element={<VendorOrdersPage />} />
             <Route path="settings" element={<VendorSettingsPage />} />
           </Route>
 

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const productController = require('../controllers/productController');
+const reviewController = require('../controllers/reviewController');
 const { protect, authorizeRoles } = require('../middlewares/authMiddleware');
 
 // Public endpoints
@@ -12,6 +13,8 @@ router.get('/', productController.searchProducts);
 // Protected vendor/admin products endpoint (MUST be before /:id)
 router.get('/my-products', protect, authorizeRoles('vendor', 'admin'), productController.getMyProducts);
 
+router.get('/:id/reviews', reviewController.getProductReviews);
+router.post('/:id/reviews', protect, reviewController.createReview);
 router.get('/:id', productController.getProductById);
 
 // Protected endpoints (Vendor and Admin)
