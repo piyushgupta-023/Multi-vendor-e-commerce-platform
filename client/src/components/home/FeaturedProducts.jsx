@@ -1,11 +1,18 @@
 import { useState, useMemo } from 'react';
-import { ArrowUpDown, SearchX } from 'lucide-react';
+import { ArrowUpDown, SearchX, X, SlidersHorizontal, ShieldCheck } from 'lucide-react';
 import ProductCard from '../ui/ProductCard';
 import { useStore } from '../../store/useStore';
 
 export default function FeaturedProducts() {
-  const { products, mockProducts, selectedCategory, setSelectedCategory, searchQuery, setSearchQuery } = useStore();
-  const [sortBy, setSortBy] = useState('featured'); // featured | price-low | price-high
+  const { 
+    products, 
+    mockProducts, 
+    selectedCategory, 
+    setSelectedCategory, 
+    searchQuery, 
+    setSearchQuery 
+  } = useStore();
+  const [sortBy, setSortBy] = useState('featured'); // featured | price-low | price-high | rating
 
   const productList = products || mockProducts || [];
 
@@ -32,8 +39,10 @@ export default function FeaturedProducts() {
       list.sort((a, b) => (parseFloat(a.price) || 0) - (parseFloat(b.price) || 0));
     } else if (sortBy === 'price-high') {
       list.sort((a, b) => (parseFloat(b.price) || 0) - (parseFloat(a.price) || 0));
+    } else if (sortBy === 'rating') {
+      list.sort((a, b) => (b.ratings?.average || 0) - (a.ratings?.average || 0));
     } else {
-      // Featured / newest
+      // Featured
       list.sort((a, b) => (b.isFeatured ? 1 : 0) - (a.isFeatured ? 1 : 0));
     }
 
@@ -41,31 +50,70 @@ export default function FeaturedProducts() {
   }, [productList, selectedCategory, searchQuery, sortBy]);
 
   return (
-    <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8" id="catalog-grid">
-      {/* Header and Controls */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+    <section className="max-w-[1536px] mx-auto px-3 sm:px-4 lg:px-6 py-8" id="catalog-grid">
+      
+      {/* Header, Active Filters, and Sort Controls */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-200/80">
         <div>
-          <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
-            {selectedCategory === 'All' ? 'Curated Catalog' : selectedCategory}
-          </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Showing {filteredProducts.length} verified item{filteredProducts.length !== 1 ? 's' : ''} available for dispatch
-          </p>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900">
+              {selectedCategory === 'All' ? 'Marketplace Catalog' : selectedCategory}
+            </h2>
+            <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+              {filteredProducts.length} items
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 mt-1 text-xs text-slate-500">
+            <span>Dispatched directly by verified makers</span>
+            <span>•</span>
+            <span className="text-emerald-700 font-semibold flex items-center gap-1">
+              <ShieldCheck size={13} /> Free Escrow Protection
+            </span>
+          </div>
         </div>
 
-        {/* Sort Controls */}
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2 bg-white border border-slate-200/80 px-3 py-1.5 rounded-lg text-xs shadow-2xs">
+        {/* Filter Chips & Sort Dropdown */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Active category chip */}
+          {selectedCategory && selectedCategory !== 'All' && (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 text-xs font-bold border border-indigo-200">
+              <span>{selectedCategory}</span>
+              <button 
+                onClick={() => setSelectedCategory('All')} 
+                className="hover:text-indigo-900 cursor-pointer ml-1"
+              >
+                <X size={12} />
+              </button>
+            </span>
+          )}
+
+          {/* Active search chip */}
+          {searchQuery && (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-900 text-xs font-bold border border-amber-200">
+              <span>Search: "{searchQuery}"</span>
+              <button 
+                onClick={() => setSearchQuery('')} 
+                className="hover:text-amber-950 cursor-pointer ml-1"
+              >
+                <X size={12} />
+              </button>
+            </span>
+          )}
+
+          {/* Sort Menu */}
+          <div className="flex items-center gap-2 bg-white border border-slate-200 px-3 py-1.5 rounded-lg text-xs shadow-2xs">
             <ArrowUpDown size={13} className="text-slate-400" />
-            <span className="text-slate-400">Sort:</span>
+            <span className="text-slate-500 font-medium">Sort by:</span>
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
-              className="bg-transparent text-slate-700 font-medium outline-none cursor-pointer"
+              className="bg-transparent text-slate-800 font-bold outline-none cursor-pointer"
             >
               <option value="featured">Featured First</option>
               <option value="price-low">Price: Low to High</option>
               <option value="price-high">Price: High to Low</option>
+              <option value="rating">Highest Customer Rating</option>
             </select>
           </div>
         </div>
@@ -74,22 +122,22 @@ export default function FeaturedProducts() {
       {/* Product Grid or Empty State */}
       {filteredProducts.length === 0 ? (
         <div className="bg-white rounded-2xl p-12 text-center border border-slate-200/80 flex flex-col items-center justify-center gap-3">
-          <div className="w-12 h-12 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-400">
-            <SearchX size={24} />
+          <div className="w-14 h-14 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-400 mb-1">
+            <SearchX size={26} />
           </div>
-          <h3 className="font-semibold text-slate-900 text-sm">No products found</h3>
-          <p className="text-xs text-slate-500 max-w-sm">
-            No items matched your current search filters. Try selecting another category or clear the search query.
+          <h3 className="font-bold text-slate-900 text-base">No items matched your search</h3>
+          <p className="text-xs text-slate-500 max-w-md leading-relaxed">
+            We couldn't find any products matching your current filters. Try searching for "Headphones", "Blazer", "Table", or reset your filters.
           </p>
           <button
             onClick={() => { setSelectedCategory('All'); setSearchQuery(''); }}
-            className="mt-1 bg-slate-900 text-white text-xs font-medium px-4 py-2 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+            className="mt-2 bg-slate-950 hover:bg-slate-800 text-white text-xs font-bold px-5 py-2.5 rounded-xl transition-colors cursor-pointer"
           >
-            Reset Filters
+            Reset All Filters
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4 lg:gap-5">
           {filteredProducts.map((product, idx) => (
             <ProductCard key={product._id || product.id || idx} product={product} index={idx} />
           ))}
