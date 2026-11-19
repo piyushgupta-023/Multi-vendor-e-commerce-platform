@@ -36,15 +36,12 @@ const vendorProfileSchema = new mongoose.Schema({
   },
 }, { timestamps: true });
 
-vendorProfileSchema.pre('save', function(next) {
-  if (this.isModified('storeName')) {
+vendorProfileSchema.pre('save', function() {
+  if (this.isModified('storeName') && this.storeName) {
     this.storeSlug = this.storeName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
   }
-  next();
 });
 
-vendorProfileSchema.index({ userId: 1 });
 vendorProfileSchema.index({ isApproved: 1 });
-vendorProfileSchema.index({ storeSlug: 1 });
 
 module.exports = mongoose.model('VendorProfile', vendorProfileSchema);

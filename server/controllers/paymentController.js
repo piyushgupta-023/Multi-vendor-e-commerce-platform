@@ -8,7 +8,11 @@ const pdfService = require('../services/pdfService');
 
 // Lazy-init payment gateways
 const getRazorpay = () => {
-  if (!process.env.RAZORPAY_KEY_ID || process.env.RAZORPAY_KEY_ID === 'your_razorpay_key') return null;
+  if (
+    !process.env.RAZORPAY_KEY_ID
+    || !process.env.RAZORPAY_KEY_SECRET
+    || process.env.RAZORPAY_KEY_ID === 'your_razorpay_key'
+  ) return null;
   return new Razorpay({ key_id: process.env.RAZORPAY_KEY_ID, key_secret: process.env.RAZORPAY_KEY_SECRET });
 };
 
@@ -22,7 +26,9 @@ const getStripe = () => {
 exports.createRazorpayOrder = async (req, res) => {
   try {
     const razorpay = getRazorpay();
-    if (!razorpay) return sendError(res, 503, 'Razorpay not configured');
+    if (!razorpay) {
+      return sendError(res, 503, 'Razorpay is not configured. Add the test Key ID and Key Secret to server/.env.');
+    }
     
     const order = await Order.findById(req.params.orderId);
     if (!order) return sendError(res, 404, 'Order not found');
@@ -50,16 +56,23 @@ exports.createRazorpayOrder = async (req, res) => {
 exports.verifyRazorpayPayment = async (req, res) => {
   try {
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature, orderId } = req.body;
+
+    if (!process.env.RAZORPAY_KEY_SECRET) {
+      return sendError(res, 503, 'Razorpay verification is not configured.');
+    }
     
     const body = `${razorpay_order_id}|${razorpay_payment_id}`;
     const expectedSignature = crypto.createHmac('sha256', process.env.RAZORPAY_KEY_SECRET).update(body).digest('hex');
     
     if (expectedSignature !== razorpay_signature) return sendError(res, 400, 'Payment verification failed');
     
-    const order = await Order.findByIdAndUpdate(orderId, {
-      paymentStatus: 'paid',
-      razorpayPaymentId: razorpay_payment_id,
-    }, { new: true });
+    const order = await Order.findById(orderId);
+    if (!order) return sendError(res, 404, 'Order not found');
+    if (order.customerId.toString() !== req.user._id.toString()) return sendError(res, 403, 'Access denied');
+
+    order.paymentStatus = 'paid';
+    order.razorpayPaymentId = razorpay_payment_id;
+    await order.save();
     
     // Generate invoice
     try {

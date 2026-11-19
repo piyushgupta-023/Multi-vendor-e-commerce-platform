@@ -1,332 +1,363 @@
-import { useState, useEffect, createContext, useContext } from 'react';
+import { useState, useEffect, createContext, useContext, useCallback, useRef } from 'react';
+import api from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 const StoreContext = createContext(null);
+const PRODUCT_CACHE_KEY = 'marketnest_products';
+const RECENT_PRODUCT_REQUEST_MS = 1000;
 
-// Mock products for demo
-const mockProducts = [
-  { _id: '1', name: 'Apple iPhone 15 Pro Max', price: 134900, comparePrice: 159900, category: 'Electronics', images: [{ url: 'https://images.unsplash.com/photo-1695048133142-1a20484d2569?w=600&auto=format&fit=crop&q=80', isPrimary: true }], ratings: { average: 4.8, count: 234 }, isFeatured: true, vendorProfileId: { storeName: 'TechNova Electronics', logo: 'https://images.unsplash.com/photo-1550009158-9ebf69173e03?w=100' }, vendorId: 'v1', stock: 45 },
-  { _id: '2', name: 'Sony WH-1000XM5 Headphones', price: 29990, comparePrice: 34990, category: 'Electronics', images: [{ url: 'https://images.unsplash.com/photo-1546435770-a3e426bf472b?w=600&auto=format&fit=crop&q=80', isPrimary: true }], ratings: { average: 4.7, count: 189 }, isFeatured: true, vendorProfileId: { storeName: 'TechNova Electronics', logo: 'https://images.unsplash.com/photo-1550009158-9ebf69173e03?w=100' }, vendorId: 'v1', stock: 85 },
-  { _id: '3', name: 'Men\'s Premium Tailored Blazer', price: 4999, comparePrice: 8999, category: 'Fashion', images: [{ url: 'https://images.unsplash.com/photo-1507679799987-c73779587ccf?w=600&auto=format&fit=crop&q=80', isPrimary: true }], ratings: { average: 4.5, count: 128 }, isFeatured: true, vendorProfileId: { storeName: 'StyleForward Fashion', logo: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=100' }, vendorId: 'v2', stock: 120 },
-  { _id: '4', name: 'Vitamin C Brightening Serum', price: 1299, comparePrice: 1999, category: 'Beauty & Personal Care', images: [{ url: 'https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=600&auto=format&fit=crop&q=80', isPrimary: true }], ratings: { average: 4.9, count: 456 }, isFeatured: true, vendorProfileId: { storeName: 'BeautyBloom Cosmetics', logo: 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=100' }, vendorId: 'v6', stock: 300 },
-  { _id: '5', name: 'Scandinavian Minimalist Coffee Table', price: 15999, comparePrice: 24999, category: 'Home & Living', images: [{ url: 'https://images.unsplash.com/photo-1533090161767-e6ffed986c88?w=600&auto=format&fit=crop&q=80', isPrimary: true }], ratings: { average: 4.6, count: 89 }, isFeatured: false, vendorProfileId: { storeName: 'HomeBliss Living', logo: 'https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?w=100' }, vendorId: 'v3', stock: 25 },
-  { _id: '6', name: 'Adjustable Dumbbell Set 2-24kg', price: 14999, comparePrice: 22999, category: 'Sports & Fitness', images: [{ url: 'https://images.unsplash.com/photo-1584735935682-2f2b69dff9d2?w=600&auto=format&fit=crop&q=80', isPrimary: true }], ratings: { average: 4.7, count: 312 }, isFeatured: true, vendorProfileId: { storeName: 'FitLife Sports', logo: 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=100' }, vendorId: 'v4', stock: 40 },
-  { _id: '7', name: 'MacBook Air M3 13.6"', price: 114900, comparePrice: 134900, category: 'Electronics', images: [{ url: 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=600&auto=format&fit=crop&q=80', isPrimary: true }], ratings: { average: 4.9, count: 567 }, isFeatured: true, vendorProfileId: { storeName: 'TechNova Electronics', logo: 'https://images.unsplash.com/photo-1550009158-9ebf69173e03?w=100' }, vendorId: 'v1', stock: 20 },
-  { _id: '8', name: 'Luxury Royal Oud Perfume Collection', price: 2999, comparePrice: 4999, category: 'Beauty & Personal Care', images: [{ url: 'https://images.unsplash.com/photo-1594035910387-fea47794261f?w=600&auto=format&fit=crop&q=80', isPrimary: true }], ratings: { average: 4.8, count: 234 }, isFeatured: true, vendorProfileId: { storeName: 'BeautyBloom Cosmetics', logo: 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=100' }, vendorId: 'v6', stock: 90 },
-  { _id: '9', name: 'Eco-Friendly High Density Yoga Mat', price: 1499, comparePrice: 2499, category: 'Sports & Fitness', images: [{ url: 'https://images.unsplash.com/photo-1601925260368-ae2f83cf8b7f?w=600&auto=format&fit=crop&q=80', isPrimary: true }], ratings: { average: 4.6, count: 178 }, isFeatured: false, vendorProfileId: { storeName: 'FitLife Sports', logo: 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=100' }, vendorId: 'v4', stock: 200 },
-  { _id: '10', name: 'Artisan Cheese & Gourmet Hamper', price: 3499, comparePrice: 4999, category: 'Food & Gourmet', images: [{ url: 'https://images.unsplash.com/photo-1631379578550-7038263db699?w=600&auto=format&fit=crop&q=80', isPrimary: true }], ratings: { average: 4.4, count: 67 }, isFeatured: true, vendorProfileId: { storeName: 'GourmetKart Foods', logo: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=100' }, vendorId: 'v5', stock: 35 },
-];
-
-const mockVendors = [
-  { _id: 'v1', storeName: 'TechNova Electronics', storeDescription: 'Next-generation gadgets, audio gear & smart computing', logo: 'https://images.unsplash.com/photo-1550009158-9ebf69173e03?w=200&auto=format&fit=crop&q=80', rating: 4.8, totalSales: 1250, category: 'Electronics', isApproved: true },
-  { _id: 'v2', storeName: 'StyleForward Fashion', storeDescription: 'Curated contemporary apparel & designer streetwear', logo: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=200&auto=format&fit=crop&q=80', rating: 4.5, totalSales: 3400, category: 'Fashion', isApproved: true },
-  { _id: 'v3', storeName: 'HomeBliss Living', storeDescription: 'Scandinavian & Japandi artisanal furniture & décor', logo: 'https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?w=200&auto=format&fit=crop&q=80', rating: 4.6, totalSales: 890, category: 'Home & Living', isApproved: true },
-  { _id: 'v4', storeName: 'FitLife Sports', storeDescription: 'Pro-grade athletic gear, weights and recovery essentials', logo: 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=200&auto=format&fit=crop&q=80', rating: 4.7, totalSales: 2100, category: 'Sports & Fitness', isApproved: true },
-  { _id: 'v5', storeName: 'GourmetKart Foods', storeDescription: 'Farm-direct organics, artisanal cheeses & charcuterie', logo: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=200&auto=format&fit=crop&q=80', rating: 4.4, totalSales: 5600, category: 'Food & Gourmet', isApproved: true },
-  { _id: 'v6', storeName: 'BeautyBloom Cosmetics', storeDescription: 'Clean beauty, luxury fragrances & clinical skincare', logo: 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=200&auto=format&fit=crop&q=80', rating: 4.9, totalSales: 7800, category: 'Beauty & Personal Care', isApproved: true },
-];
-
-const initialMockOrders = [
-  {
-    _id: 'ord_1001',
-    orderNumber: 'ORD-20261028-1001',
-    createdAt: new Date(Date.now() - 3600000 * 2).toISOString(),
-    totalAmount: 34989,
-    subtotal: 34989,
-    shippingCharge: 0,
-    paymentMethod: 'razorpay',
-    paymentStatus: 'paid',
-    shippingAddress: {
-      name: 'John Doe',
-      street: '42 Palm Avenue, Silver Heights, Apt 4B',
-      city: 'Mumbai',
-      state: 'Maharashtra',
-      pincode: '400050',
-      phone: '+91 98200 12345',
-    },
-    subOrders: [
-      {
-        _id: 'sub_101',
-        vendorId: 'v1',
-        vendorStoreName: 'TechNova Electronics',
-        subtotal: 29990,
-        status: 'shipped',
-        trackingNumber: 'MN-EXP-8842',
-        courierPartner: 'MarketNest Prime Express',
-        estimatedDelivery: 'Oct 30, 2026',
-        items: [
-          {
-            name: 'Sony WH-1000XM5 Headphones',
-            image: 'https://images.unsplash.com/photo-1546435770-a3e426bf472b?w=600&auto=format&fit=crop&q=80',
-            price: 29990,
-            quantity: 1,
-            subtotal: 29990,
-          }
-        ],
-        statusHistory: [
-          { status: 'placed', timestamp: new Date(Date.now() - 3600000 * 2).toISOString(), note: 'Order placed by customer' },
-          { status: 'packed', timestamp: new Date(Date.now() - 3600000 * 1.5).toISOString(), note: 'Parcel packed and barcoded' },
-          { status: 'shipped', timestamp: new Date(Date.now() - 3600000 * 0.5).toISOString(), note: 'Handed over to courier facility' },
-        ]
-      },
-      {
-        _id: 'sub_102',
-        vendorId: 'v2',
-        vendorStoreName: 'StyleForward Fashion',
-        subtotal: 4999,
-        status: 'packed',
-        trackingNumber: 'MN-EXP-2319',
-        courierPartner: 'MarketNest Surface Air',
-        estimatedDelivery: 'Oct 31, 2026',
-        items: [
-          {
-            name: 'Men\'s Premium Tailored Blazer',
-            image: 'https://images.unsplash.com/photo-1507679799987-c73779587ccf?w=600&auto=format&fit=crop&q=80',
-            price: 4999,
-            quantity: 1,
-            subtotal: 4999,
-          }
-        ],
-        statusHistory: [
-          { status: 'placed', timestamp: new Date(Date.now() - 3600000 * 2).toISOString(), note: 'Order placed by customer' },
-          { status: 'packed', timestamp: new Date(Date.now() - 3600000 * 1).toISOString(), note: 'Item tailored and quality checked' },
-        ]
-      }
-    ]
-  },
-  {
-    _id: 'ord_1002',
-    orderNumber: 'ORD-20261027-0922',
-    createdAt: new Date(Date.now() - 86400000 * 2).toISOString(),
-    totalAmount: 15999,
-    subtotal: 15999,
-    shippingCharge: 0,
-    paymentMethod: 'cod',
-    paymentStatus: 'pending',
-    shippingAddress: {
-      name: 'John Doe',
-      street: '42 Palm Avenue, Silver Heights, Apt 4B',
-      city: 'Mumbai',
-      state: 'Maharashtra',
-      pincode: '400050',
-      phone: '+91 98200 12345',
-    },
-    subOrders: [
-      {
-        _id: 'sub_103',
-        vendorId: 'v3',
-        vendorStoreName: 'HomeBliss Living',
-        subtotal: 15999,
-        status: 'delivered',
-        trackingNumber: 'MN-EXP-7710',
-        courierPartner: 'MarketNest Heavy Logistics',
-        estimatedDelivery: 'Delivered',
-        deliveredAt: new Date(Date.now() - 86400000).toISOString(),
-        items: [
-          {
-            name: 'Scandinavian Minimalist Coffee Table',
-            image: 'https://images.unsplash.com/photo-1533090161767-e6ffed986c88?w=600&auto=format&fit=crop&q=80',
-            price: 15999,
-            quantity: 1,
-            subtotal: 15999,
-          }
-        ],
-        statusHistory: [
-          { status: 'placed', timestamp: new Date(Date.now() - 86400000 * 2).toISOString(), note: 'Order placed by customer' },
-          { status: 'packed', timestamp: new Date(Date.now() - 86400000 * 1.8).toISOString(), note: 'Teak wood assembled & boxed' },
-          { status: 'shipped', timestamp: new Date(Date.now() - 86400000 * 1.5).toISOString(), note: 'In transit via freight' },
-          { status: 'delivered', timestamp: new Date(Date.now() - 86400000).toISOString(), note: 'Successfully delivered to customer' },
-        ]
-      }
-    ]
+function readCachedProducts() {
+  try {
+    const cached = JSON.parse(localStorage.getItem(PRODUCT_CACHE_KEY) || 'null');
+    return Array.isArray(cached) ? cached.filter((product) => product && typeof product === 'object') : [];
+  } catch (err) {
+    console.warn('Failed to read cached products:', err.message);
+    return [];
   }
-];
+}
 
 export function StoreProvider({ children }) {
-  const [products, setProducts] = useState(mockProducts);
-  const [cartItems, setCartItems] = useState([
-    { ...mockProducts[0], quantity: 1 },
-    { ...mockProducts[1], quantity: 1 }
-  ]);
+  const { user, token } = useAuth();
+  const [products, setProducts] = useState(readCachedProducts);
+  const productsRef = useRef(products);
+  const productRequestsRef = useRef(new Map());
+  const latestProductPathRef = useRef(null);
+  const displayedProductPathRef = useRef(null);
+  const recentProductQueryRef = useRef(null);
+  const [vendors, setVendors] = useState([]);
+  const [cartItems, setCartItems] = useState([]);
   const [cartOpen, setCartOpen] = useState(false);
-  const [user, setUser] = useState(null);
-  const [role, setRole] = useState('customer'); // customer | vendor | admin
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
-  const [wishlist, setWishlist] = useState(['1', '4']);
+  const [wishlist, setWishlist] = useState([]);
   const [toast, setToast] = useState(null);
-  const [orders, setOrders] = useState(initialMockOrders);
+  const [orders, setOrders] = useState([]);
+  const [loadingCart, setLoadingCart] = useState(false);
+  const [loadingProducts, setLoadingProducts] = useState(products.length === 0);
 
-  // Sync products with backend on load
-  useEffect(() => {
-    let isMounted = true;
-    const fetchCatalog = async () => {
-      try {
-        const res = await fetch('/api/products?limit=30');
-        const data = await res.json();
-        if (isMounted && data?.success && Array.isArray(data.data) && data.data.length > 0) {
-          setProducts(prev => {
-            const fetched = data.data;
-            const fetchedIds = new Set(fetched.map(p => p._id || p.id));
-            const remaining = prev.filter(p => !fetchedIds.has(p._id || p.id));
-            return [...fetched, ...remaining];
-          });
-        }
-      } catch {
-        // Fallback to initial mock products
-      }
-    };
-    fetchCatalog();
-    return () => { isMounted = false; };
-  }, []);
-
-  // Fetch user orders from backend if token present
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) return;
-
-    const fetchOrders = async () => {
-      try {
-        const res = await fetch('/api/orders/my-orders', {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const data = await res.json();
-        if (data?.success && Array.isArray(data.data) && data.data.length > 0) {
-          setOrders(prev => {
-            const fetched = data.data;
-            const fetchedIds = new Set(fetched.map(o => o._id || o.orderNumber));
-            const remaining = prev.filter(o => !fetchedIds.has(o._id || o.orderNumber));
-            return [...fetched, ...remaining];
-          });
-        }
-      } catch {
-        // Retain initial mock orders
-      }
-    };
-    fetchOrders();
-  }, []);
-
-  const showToast = (message, type = 'info') => {
+  const showToast = useCallback((message, type = 'info') => {
     setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
-  };
+    setTimeout(() => setToast(null), 3500);
+  }, []);
 
-  const addProductToStore = (newProduct) => {
-    const formatted = {
-      ...newProduct,
-      _id: newProduct._id || newProduct.id || `prod_${Date.now()}`,
-      name: newProduct.name || newProduct.title,
-      title: newProduct.name || newProduct.title,
-      price: parseFloat(newProduct.price),
-      comparePrice: newProduct.comparePrice ? parseFloat(newProduct.comparePrice) : (newProduct.discountPrice ? parseFloat(newProduct.discountPrice) : undefined),
-      images: Array.isArray(newProduct.images) ? newProduct.images : [{ url: newProduct.images || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=600&auto=format&fit=crop&q=80', isPrimary: true }],
-      ratings: newProduct.ratings || { average: 5.0, count: 1 },
-      isFeatured: newProduct.isFeatured !== undefined ? newProduct.isFeatured : true,
-      stock: newProduct.stock !== undefined ? parseInt(newProduct.stock, 10) : 50,
-      vendorProfileId: newProduct.vendorProfileId || { storeName: 'TechNova Electronics' },
-      vendorId: newProduct.vendorId || 'v1',
-    };
-    setProducts(prev => [formatted, ...prev.filter(p => (p._id || p.id) !== formatted._id)]);
-  };
+  // Fetch real catalog from backend
+  const fetchProducts = useCallback(async (params = {}) => {
+    const queryParams = new URLSearchParams();
+    if (params.category && params.category !== 'All') queryParams.append('category', params.category);
+    if (params.search || params.q) queryParams.append('search', params.search || params.q);
+    if (params.sort) queryParams.append('sort', params.sort);
+    if (params.minPrice !== undefined && params.minPrice !== '') queryParams.append('minPrice', params.minPrice);
+    if (params.maxPrice !== undefined && params.maxPrice !== '') queryParams.append('maxPrice', params.maxPrice);
+    if (params.minRating !== undefined && params.minRating !== '') queryParams.append('minRating', params.minRating);
+    queryParams.append('limit', params.limit || 50);
 
-  const updateProductInStore = (updatedProduct) => {
-    const id = updatedProduct._id || updatedProduct.id;
-    setProducts(prev => prev.map(p => {
-      if ((p._id || p.id) === id) {
-        return {
-          ...p,
-          ...updatedProduct,
-          name: updatedProduct.name || updatedProduct.title || p.name,
-          title: updatedProduct.name || updatedProduct.title || p.title,
-          price: updatedProduct.price !== undefined ? parseFloat(updatedProduct.price) : p.price,
-          comparePrice: updatedProduct.comparePrice !== undefined ? parseFloat(updatedProduct.comparePrice) : p.comparePrice,
-        };
+    const path = `/products?${queryParams.toString()}`;
+    latestProductPathRef.current = path;
+    const recentRequest = recentProductQueryRef.current;
+    if (
+      recentRequest?.path === path
+      && displayedProductPathRef.current === path
+      && Date.now() - recentRequest.completedAt < RECENT_PRODUCT_REQUEST_MS
+    ) {
+      return;
+    }
+
+    const pendingRequest = productRequestsRef.current.get(path);
+    if (pendingRequest) return pendingRequest;
+
+    if (!productsRef.current.length) setLoadingProducts(true);
+
+    const isDefaultCatalog = (!params.category || params.category === 'All')
+      && !(params.search || params.q)
+      && !params.sort
+      && [params.minPrice, params.maxPrice, params.minRating].every((value) => value === undefined || value === '')
+      && (!params.limit || Number(params.limit) === 50);
+
+    const request = (async () => {
+      try {
+        let res;
+        for (let attempt = 0; ; attempt += 1) {
+          try {
+            res = await api.get(path);
+            break;
+          } catch (err) {
+            const retryable = !err.response || err.response.status === 429 || err.response.status >= 500;
+            if (!retryable || attempt >= 2) throw err;
+            await new Promise((resolve) => setTimeout(resolve, attempt === 0 ? 500 : 1200));
+          }
+        }
+
+        if (!res.data?.success || !Array.isArray(res.data.data)) {
+          console.warn('Product API returned an invalid catalog response.');
+          return;
+        }
+
+        if (latestProductPathRef.current === path) {
+          const nextProducts = res.data.data;
+          productsRef.current = nextProducts;
+          setProducts(nextProducts);
+          displayedProductPathRef.current = path;
+          recentProductQueryRef.current = { path, completedAt: Date.now() };
+
+          if (isDefaultCatalog) {
+            try {
+              localStorage.setItem(PRODUCT_CACHE_KEY, JSON.stringify(nextProducts));
+            } catch (err) {
+              console.warn('Failed to cache products:', err.message);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to load products from server:', err.message);
+      } finally {
+        productRequestsRef.current.delete(path);
+        if (latestProductPathRef.current === path) setLoadingProducts(false);
       }
-      return p;
-    }));
-  };
+    })();
 
-  const deleteProductFromStore = (productId) => {
-    setProducts(prev => prev.filter(p => (p._id || p.id) !== productId));
-  };
+    productRequestsRef.current.set(path, request);
+    return request;
+  }, []);
 
-  const cartCount = cartItems.reduce((sum, item) => sum + (item.quantity || 1), 0);
-  const cartTotal = cartItems.reduce((sum, item) => sum + (parseFloat(item.price) || 0) * (item.quantity || 1), 0);
-
-  const addToCart = (product) => {
-    const pId = product._id || product.id;
-    setCartItems(prev => {
-      const existing = prev.find(i => (i._id || i.id) === pId);
-      if (existing) {
-        return prev.map(i => (i._id || i.id) === pId ? { ...i, quantity: i.quantity + 1 } : i);
+  // Fetch real vendors from backend
+  const fetchVendors = useCallback(async () => {
+    try {
+      const res = await api.get('/vendor/public');
+      if (res?.data?.success && Array.isArray(res.data.data)) {
+        setVendors(res.data.data);
       }
-      return [...prev, { ...product, quantity: 1 }];
-    });
-    showToast(`Added "${product.name || product.title}" to cart!`, 'success');
+    } catch {}
+  }, []);
+
+  // Fetch cart from Redis / MongoDB backend
+  const fetchCart = useCallback(async () => {
+    const token = localStorage.getItem('token') || localStorage.getItem('marketnest_token');
+    if (!token) {
+      // Guest cart from localStorage
+      try {
+        const local = localStorage.getItem('marketnest_guest_cart');
+        setCartItems(local ? JSON.parse(local) : []);
+      } catch {
+        setCartItems([]);
+      }
+      return;
+    }
+
+    setLoadingCart(true);
+    try {
+      const res = await api.get('/cart');
+      if (res.data?.success && res.data.data) {
+        const serverItems = Array.isArray(res.data.data.items) ? res.data.data.items : [];
+        setCartItems(serverItems);
+      }
+    } catch (err) {
+      console.warn('Failed to sync cart with server:', err.message);
+    } finally {
+      setLoadingCart(false);
+    }
+  }, []);
+
+  // Fetch customer orders from backend
+  const fetchOrders = useCallback(async () => {
+    const token = localStorage.getItem('token') || localStorage.getItem('marketnest_token');
+    if (!token) {
+      setOrders([]);
+      return;
+    }
+
+    try {
+      const res = await api.get('/orders/my-orders');
+      if (res.data?.success && Array.isArray(res.data.data)) {
+        setOrders(res.data.data);
+      }
+    } catch (err) {
+      console.warn('Failed to load orders from server:', err.message);
+    }
+  }, []);
+
+  // Sync cart and orders when user authentication state changes
+  useEffect(() => {
+    fetchProducts();
+    fetchVendors();
+    fetchCart();
+    if (token) {
+      fetchOrders();
+    } else {
+      setOrders([]);
+    }
+  }, [token, user, fetchProducts, fetchVendors, fetchCart, fetchOrders]);
+
+  // Add to cart wired to POST /api/cart/add
+  const addToCart = async (productOrId, quantity = 1) => {
+    const isObject = typeof productOrId === 'object' && productOrId !== null;
+    const productId = isObject ? (productOrId._id || productOrId.id) : productOrId;
+    const productName = isObject ? (productOrId.name || productOrId.title) : 'Product';
+
+    const token = localStorage.getItem('token') || localStorage.getItem('marketnest_token');
+
+    if (token) {
+      try {
+        const res = await api.post('/cart/add', { productId, quantity });
+        if (res.data?.success && res.data.data?.items) {
+          setCartItems(res.data.data.items);
+          showToast(`Added "${productName}" to cart!`, 'success');
+          return { success: true };
+        }
+      } catch (err) {
+        const msg = err.response?.data?.message || 'Failed to add item to cart';
+        showToast(msg, 'error');
+        return { success: false, error: msg };
+      }
+    } else {
+      // Local guest cart
+      setCartItems((prev) => {
+        const existing = prev.find((i) => (i.productId?._id || i.productId || i._id || i.id) === productId);
+        let updated;
+        if (existing) {
+          updated = prev.map((i) =>
+            (i.productId?._id || i.productId || i._id || i.id) === productId
+              ? { ...i, quantity: i.quantity + quantity }
+              : i
+          );
+        } else {
+          const itemToAdd = isObject ? { ...productOrId, productId, quantity } : { productId, quantity, price: 0 };
+          updated = [...prev, itemToAdd];
+        }
+        localStorage.setItem('marketnest_guest_cart', JSON.stringify(updated));
+        return updated;
+      });
+      showToast(`Added "${productName}" to cart!`, 'success');
+      return { success: true };
+    }
   };
 
-  const removeFromCart = (productId) => {
-    setCartItems(prev => prev.filter(i => (i._id || i.id) !== productId));
+  // Update item quantity wired to PUT /api/cart/update
+  const updateQuantity = async (productId, quantity) => {
+    const token = localStorage.getItem('token') || localStorage.getItem('marketnest_token');
+
+    if (token) {
+      try {
+        const res = await api.put('/cart/update', { productId, quantity });
+        if (res.data?.success && res.data.data?.items) {
+          setCartItems(res.data.data.items);
+        }
+      } catch (err) {
+        showToast('Failed to update cart quantity', 'error');
+      }
+    } else {
+      setCartItems((prev) => {
+        let updated;
+        if (quantity <= 0) {
+          updated = prev.filter((i) => (i.productId?._id || i.productId || i._id || i.id) !== productId);
+        } else {
+          updated = prev.map((i) =>
+            (i.productId?._id || i.productId || i._id || i.id) === productId ? { ...i, quantity } : i
+          );
+        }
+        localStorage.setItem('marketnest_guest_cart', JSON.stringify(updated));
+        return updated;
+      });
+    }
+  };
+
+  // Remove from cart wired to PUT /api/cart/update with quantity 0
+  const removeFromCart = async (productId) => {
+    await updateQuantity(productId, 0);
     showToast('Item removed from cart', 'info');
   };
 
-  const updateQuantity = (productId, qty) => {
-    if (qty <= 0) return removeFromCart(productId);
-    setCartItems(prev => prev.map(i => (i._id || i.id) === productId ? { ...i, quantity: qty } : i));
-  };
-
-  const clearCart = () => {
+  // Clear cart wired to DELETE /api/cart/clear
+  const clearCart = async () => {
+    const token = localStorage.getItem('token') || localStorage.getItem('marketnest_token');
+    if (token) {
+      try {
+        await api.delete('/cart/clear');
+      } catch {}
+    } else {
+      localStorage.removeItem('marketnest_guest_cart');
+    }
     setCartItems([]);
   };
 
+  // Wishlist toggle
   const toggleWishlist = (productId) => {
-    setWishlist(prev => {
+    setWishlist((prev) => {
       const exists = prev.includes(productId);
-      const next = exists ? prev.filter(id => id !== productId) : [...prev, productId];
+      const next = exists ? prev.filter((id) => id !== productId) : [...prev, productId];
       showToast(exists ? 'Removed from wishlist' : 'Added to wishlist!', 'success');
       return next;
     });
   };
 
+  // Real-time calculations
+  const cartCount = cartItems.reduce((sum, item) => sum + (item.quantity || 1), 0);
+  const cartTotal = cartItems.reduce(
+    (sum, item) => sum + (parseFloat(item.price || item.productId?.price) || 0) * (item.quantity || 1),
+    0
+  );
+
   const addOrder = (orderData) => {
-    setOrders(prev => [orderData, ...prev]);
+    setOrders((prev) => [orderData, ...prev]);
     clearCart();
   };
 
   const updateSubOrderStatusInStore = (subOrderId, newStatus) => {
-    setOrders(prev => prev.map(order => {
-      if (!order.subOrders) return order;
-      const updatedSubOrders = order.subOrders.map(so => {
-        if (so._id === subOrderId) {
-          const currentHistory = so.statusHistory || [];
-          return {
-            ...so,
-            status: newStatus,
-            deliveredAt: newStatus === 'delivered' ? new Date().toISOString() : so.deliveredAt,
-            statusHistory: [
-              ...currentHistory,
-              { status: newStatus, timestamp: new Date().toISOString(), note: `Status updated to ${newStatus}` }
-            ]
-          };
-        }
-        return so;
-      });
-      return { ...order, subOrders: updatedSubOrders };
-    }));
+    setOrders((prev) =>
+      prev.map((order) => {
+        if (!order.subOrders) return order;
+        const updatedSubOrders = order.subOrders.map((so) => {
+          if (so._id === subOrderId) {
+            const currentHistory = so.statusHistory || [];
+            return {
+              ...so,
+              status: newStatus,
+              deliveredAt: newStatus === 'delivered' ? new Date().toISOString() : so.deliveredAt,
+              statusHistory: [
+                ...currentHistory,
+                { status: newStatus, timestamp: new Date().toISOString(), note: `Status updated to ${newStatus}` },
+              ],
+            };
+          }
+          return so;
+        });
+        return { ...order, subOrders: updatedSubOrders };
+      })
+    );
   };
 
   return (
-    <StoreContext.Provider value={{
-      cartItems, cartCount, cartTotal, cartOpen, setCartOpen,
-      addToCart, removeFromCart, updateQuantity, clearCart,
-      user, setUser, role, setRole,
-      products, mockProducts: products, mockVendors,
-      addProductToStore, updateProductInStore, deleteProductFromStore,
-      selectedCategory, setSelectedCategory,
-      searchQuery, setSearchQuery,
-      wishlist, toggleWishlist,
-      toast, showToast,
-      orders, addOrder, updateSubOrderStatusInStore,
-    }}>
+    <StoreContext.Provider
+      value={{
+        cartItems,
+        cartCount,
+        cartTotal,
+        cartOpen,
+        setCartOpen,
+        loadingCart,
+        fetchCart,
+        addToCart,
+        removeFromCart,
+        updateQuantity,
+        clearCart,
+        products,
+        loadingProducts,
+        fetchProducts,
+        vendors,
+        fetchVendors,
+        selectedCategory,
+        setSelectedCategory,
+        searchQuery,
+        setSearchQuery,
+        wishlist,
+        toggleWishlist,
+        toast,
+        showToast,
+        orders,
+        fetchOrders,
+        addOrder,
+        updateSubOrderStatusInStore,
+      }}
+    >
       {children}
     </StoreContext.Provider>
   );

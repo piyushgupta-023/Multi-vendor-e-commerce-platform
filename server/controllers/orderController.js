@@ -122,7 +122,7 @@ exports.checkout = async (req, res) => {
       taxAmount,
       totalAmount,
       paymentMethod,
-      paymentStatus: paymentMethod === 'cod' ? 'pending' : 'paid',
+      paymentStatus: 'pending',
     });
 
     // Create SubOrder per vendor
@@ -173,7 +173,7 @@ exports.checkout = async (req, res) => {
           commissionRate,
           commissionAmount,
           netPayout: vendorPayout,
-          status: paymentMethod === 'cod' ? 'pending' : 'settled',
+          status: 'pending',
         });
       } catch {}
 
@@ -335,6 +335,22 @@ exports.downloadInvoice = async (req, res) => {
   try {
     const order = await Order.findById(req.params.id).populate('customerId', 'name email').lean();
     if (!order) return sendError(res, 404, 'Order not found');
+
+    // Populate vendor store information if available
+    try {
+      const SubOrder = require('../models/SubOrder');
+      const VendorProfile = require('../models/VendorProfile');
+      const subOrders = await SubOrder.find({ orderId: order._id }).lean();
+      if (subOrders.length > 0 && subOrders[0].vendorId) {
+        const profile = await VendorProfile.findOne({ userId: subOrders[0].vendorId }).lean();
+        if (profile) {
+          order.vendorStoreName = profile.storeName;
+          order.vendorGstin = profile.gstNumber || '07AAACV1234F1Z5';
+        }
+      }
+    } catch (vErr) {
+      console.warn('Vendor lookup note for invoice:', vErr.message);
+    }
 
     const invoiceService = require('../services/invoiceService');
     const pdfBuffer = await invoiceService.generateInvoiceBuffer(order);

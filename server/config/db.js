@@ -1,30 +1,22 @@
 const mongoose = require('mongoose');
 
-let isConnected = false;
-
 const connectDB = async () => {
-  const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017/marketplace';
-  try {
-    const conn = await mongoose.connect(uri, {
-      serverSelectionTimeoutMS: 3000,
-    });
-    isConnected = true;
-    console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
-    return conn;
-  } catch (err) {
-    console.warn(`⚠️  MongoDB connection failed: ${err.message}`);
-    console.warn('⚠️  Server is running in resilient mode without active MongoDB connection (start MongoDB/Docker to persist data).');
+  const uri = process.env.MONGODB_URI;
+  if (!uri) {
+    throw new Error('MONGODB_URI must be configured before connecting to MongoDB.');
   }
+
+  if (mongoose.connection.readyState === 1) {
+    return mongoose.connection;
+  }
+
+  await mongoose.connect(uri, {
+    serverSelectionTimeoutMS: Number(process.env.MONGODB_SERVER_SELECTION_TIMEOUT_MS) || 5000,
+    autoIndex: false,
+  });
+
+  console.log('MongoDB Connected successfully');
+  return mongoose.connection;
 };
-
-mongoose.connection.on('connected', () => {
-  isConnected = true;
-  console.log('✅ MongoDB connection established');
-});
-
-mongoose.connection.on('disconnected', () => {
-  isConnected = false;
-  console.warn('⚠️  MongoDB disconnected');
-});
 
 module.exports = connectDB;

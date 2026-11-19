@@ -18,7 +18,6 @@ const couponSchema = new mongoose.Schema({
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });
 
-couponSchema.index({ code: 1 });
 couponSchema.index({ isActive: 1, expiresAt: 1 });
 couponSchema.index({ vendorId: 1 });
 

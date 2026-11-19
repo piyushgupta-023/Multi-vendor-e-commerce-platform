@@ -12,18 +12,18 @@ import {
   ShieldCheck, 
   Truck, 
   Store,
-  CheckCircle2,
   Lock
 } from 'lucide-react';
 import { useStore } from '../../store/useStore';
+import ProductImage from '../ui/ProductImage';
 
-const formatPrice = (price) => `₹${Math.round(price).toLocaleString('en-IN')}`;
+const formatPrice = (price) => `₹${Math.round(price || 0).toLocaleString('en-IN')}`;
 
 export default function CartDrawer() {
-  const { cartOpen, setCartOpen, cartItems, cartTotal, updateQuantity, removeFromCart } = useStore();
+  const { cartOpen, setCartOpen, cartItems, cartCount, cartTotal, updateQuantity, removeFromCart } = useStore();
   const navigate = useNavigate();
 
-  const freeShippingThreshold = 999;
+  const freeShippingThreshold = 1000;
   const progressToFreeShipping = Math.min((cartTotal / freeShippingThreshold) * 100, 100);
   const remainingForFreeShipping = Math.max(freeShippingThreshold - cartTotal, 0);
 
@@ -50,9 +50,9 @@ export default function CartDrawer() {
     return Object.values(groups);
   }, [cartItems]);
 
-  const shippingCost = cartTotal > 999 || cartTotal === 0 ? 0 : 99;
-  const estimatedTax = Math.round(cartTotal * 0.18);
-  const grandTotal = cartTotal + shippingCost + estimatedTax;
+  const shippingCost = cartTotal >= 1000 || cartTotal === 0 ? 0 : 40;
+  const platformFee = cartTotal > 0 ? 15 : 0;
+  const grandTotal = cartTotal + shippingCost + platformFee;
 
   const handleProceedToCheckout = () => {
     setCartOpen(false);
@@ -81,19 +81,19 @@ export default function CartDrawer() {
             className="fixed right-0 top-0 h-full w-full max-w-lg bg-slate-50 z-50 shadow-2xl flex flex-col font-sans"
           >
             {/* 1. Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 bg-[#131921] text-white">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 bg-slate-900 text-white">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-amber-400 text-slate-950 flex items-center justify-center font-black">
+                <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold shadow-md shadow-indigo-600/30">
                   <ShoppingCart size={18} strokeWidth={2.5} />
                 </div>
                 <div>
                   <h2 className="font-extrabold text-white text-base tracking-tight flex items-center gap-2">
                     <span>Marketplace Cart</span>
-                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-800 text-amber-400">
-                      {cartItems.reduce((acc, i) => acc + (i.quantity || 1), 0)} items
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-950 text-indigo-300 border border-indigo-800/80">
+                      {cartCount} items
                     </span>
                   </h2>
-                  <p className="text-[11px] text-slate-400 font-medium">
+                  <p className="text-xs text-slate-400 font-medium">
                     Unified Multi-Vendor Split Checkout
                   </p>
                 </div>
@@ -109,22 +109,22 @@ export default function CartDrawer() {
             </div>
 
             {/* 2. Free Shipping Threshold Progress */}
-            <div className="bg-amber-50/80 border-b border-amber-200/60 px-5 py-2.5">
-              <div className="flex items-center justify-between text-xs font-bold text-amber-950 mb-1.5">
+            <div className="bg-indigo-50/80 border-b border-indigo-100 px-5 py-2.5">
+              <div className="flex items-center justify-between text-sm font-semibold text-indigo-950 mb-1.5">
                 <span className="flex items-center gap-1.5">
-                  <Truck size={14} className="text-amber-600" />
+                  <Truck size={14} className="text-indigo-600" />
                   {remainingForFreeShipping > 0
-                    ? `Add ${formatPrice(remainingForFreeShipping)} more for FREE Escrow Delivery!`
-                    : '🎉 You unlocked FREE Prime Delivery!'}
+                  ? `Add ${formatPrice(remainingForFreeShipping)} more for free delivery`
+                    : '🎉 You unlocked FREE Express Delivery!'}
                 </span>
-                <span className="text-[11px] text-amber-700 font-bold">{Math.round(progressToFreeShipping)}%</span>
+                <span className="text-xs text-indigo-700 font-bold">{Math.round(progressToFreeShipping)}%</span>
               </div>
-              <div className="w-full bg-amber-200/50 h-1.5 rounded-full overflow-hidden">
+              <div className="w-full bg-indigo-200/50 h-1.5 rounded-full overflow-hidden">
                 <motion.div
                   initial={{ width: 0 }}
                   animate={{ width: `${progressToFreeShipping}%` }}
                   transition={{ duration: 0.4 }}
-                  className="bg-amber-500 h-full rounded-full"
+                  className="bg-indigo-600 h-full rounded-full"
                 />
               </div>
             </div>
@@ -138,13 +138,13 @@ export default function CartDrawer() {
                   </div>
                   <div className="max-w-xs space-y-1">
                     <p className="font-bold text-slate-900 text-base">Your MarketNest cart is empty</p>
-                    <p className="text-slate-500 text-xs leading-relaxed">
+                    <p className="text-slate-500 text-sm leading-relaxed">
                       Discover independent makers, audio gear, and curated fashion drops on our storefront.
                     </p>
                   </div>
                   <button
                     onClick={() => setCartOpen(false)}
-                    className="mt-2 bg-amber-400 hover:bg-amber-500 text-slate-950 px-5 py-2.5 rounded-xl font-bold text-xs shadow-xs transition-colors cursor-pointer"
+                    className="mt-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-semibold text-sm shadow-md shadow-indigo-600/20 transition-all cursor-pointer"
                   >
                     Explore Products
                   </button>
@@ -159,12 +159,12 @@ export default function CartDrawer() {
                     <div className="bg-slate-50 px-3.5 py-2 border-b border-slate-100 flex items-center justify-between">
                       <div className="flex items-center gap-1.5 min-w-0">
                         <Store size={14} className="text-indigo-600 flex-shrink-0" />
-                        <span className="text-xs font-bold text-slate-800 truncate">
+                        <span className="text-sm font-bold text-slate-800 truncate">
                           Sold by {group.vendorName}
                         </span>
                         <ShieldCheck size={12} className="text-indigo-600 flex-shrink-0" />
                       </div>
-                      <span className="text-[11px] font-semibold text-slate-500">
+                      <span className="text-xs font-semibold text-slate-500">
                         Subtotal: <strong className="text-slate-900">{formatPrice(group.subtotal)}</strong>
                       </span>
                     </div>
@@ -172,34 +172,36 @@ export default function CartDrawer() {
                     {/* Products from this vendor */}
                     <div className="divide-y divide-slate-100">
                       {group.items.map((item) => {
-                        const pId = item._id || item.id;
-                        const itemPrice = parseFloat(item.price) || 0;
+                        const product = item.productId && typeof item.productId === 'object'
+                          ? item.productId
+                          : item;
+                        const pId = product._id || product.id || item.productId;
+                        const itemPrice = parseFloat(item.price || product.price) || 0;
+                        const comparePrice = parseFloat(item.comparePrice || product.comparePrice) || 0;
                         const itemQty = item.quantity || 1;
-                        const itemImage = 
-                          item.images?.[0]?.url || 
-                          (typeof item.images?.[0] === 'string' ? item.images[0] : null) || 
-                          item.image || 
-                          'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=200&auto=format&fit=crop&q=80';
+                        const cartProduct = { ...product, image: item.image || product.image };
 
                         return (
                           <div key={pId} className="p-3.5 flex gap-3 items-center">
                             {/* Product Thumbnail */}
-                            <img
-                              src={itemImage}
-                              alt={item.name || item.title}
+                            <ProductImage
+                              product={cartProduct}
+                              alt={item.name || product.name || product.title}
                               className="w-16 h-16 rounded-lg object-cover border border-slate-200 flex-shrink-0 bg-slate-50"
-                              onError={(e) => {
-                                e.target.src = 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=200&auto=format&fit=crop&q=80';
-                              }}
                             />
 
                             {/* Details */}
                             <div className="flex-1 min-w-0">
-                              <h4 className="text-xs font-bold text-slate-900 line-clamp-1 leading-snug">
-                                {item.name || item.title}
+                              <h4 className="text-sm font-semibold text-slate-900 line-clamp-2 leading-snug">
+                                {item.name || product.name || product.title}
                               </h4>
-                              <p className="text-xs font-extrabold text-slate-900 mt-0.5">
+                              <p className="text-sm font-bold text-slate-900 mt-1">
                                 {formatPrice(itemPrice)}
+                                {comparePrice > itemPrice && (
+                                  <span className="ml-2 text-xs font-normal text-slate-400 line-through">
+                                    {formatPrice(comparePrice)}
+                                  </span>
+                                )}
                               </p>
 
                               {/* Quantity Controls & Remove */}
@@ -212,7 +214,7 @@ export default function CartDrawer() {
                                   >
                                     <Minus size={12} />
                                   </button>
-                                  <span className="px-2 text-xs font-bold text-slate-800">
+                                  <span className="px-3 text-sm font-semibold text-slate-800">
                                     {itemQty}
                                   </span>
                                   <button
@@ -245,23 +247,23 @@ export default function CartDrawer() {
             {/* 4. Bottom Order Summary & Proceed Action */}
             {cartItems.length > 0 && (
               <div className="bg-white border-t border-slate-200 p-4 sm:p-5 space-y-3 shadow-lg">
-                <div className="space-y-1.5 text-xs">
+                <div className="space-y-2 text-sm">
                   <div className="flex items-center justify-between text-slate-600">
                     <span>Items Subtotal:</span>
-                    <span className="font-bold text-slate-900">{formatPrice(cartTotal)}</span>
+                    <span className="font-semibold text-slate-900">{formatPrice(cartTotal)}</span>
                   </div>
                   <div className="flex items-center justify-between text-slate-600">
-                    <span>Estimated Shipping:</span>
+                    <span>Delivery:</span>
                     <span className="font-bold text-emerald-600">
                       {shippingCost === 0 ? 'FREE' : formatPrice(shippingCost)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-slate-600">
-                    <span>Estimated GST (18%):</span>
-                    <span className="font-bold text-slate-900">{formatPrice(estimatedTax)}</span>
+                    <span>Platform fee:</span>
+                    <span className="font-bold text-slate-900">{formatPrice(platformFee)}</span>
                   </div>
                   <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-sm">
-                    <span className="font-black text-slate-900">Total Amount:</span>
+                    <span className="font-bold text-slate-900">Total amount:</span>
                     <span className="text-base font-black text-slate-950">
                       {formatPrice(grandTotal)}
                     </span>
@@ -271,14 +273,14 @@ export default function CartDrawer() {
                 {/* Checkout CTA */}
                 <button
                   onClick={handleProceedToCheckout}
-                  className="w-full py-3 px-4 rounded-xl bg-amber-400 hover:bg-amber-500 active:bg-amber-600 text-slate-950 font-black text-sm tracking-wide shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer group"
+                  className="w-full py-3.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-semibold text-sm tracking-wide shadow-lg shadow-indigo-600/25 flex items-center justify-center gap-2 transition-all cursor-pointer group active:scale-95"
                 >
                   <Lock size={15} />
-                  <span>Proceed to Checkout ({cartItems.length} items)</span>
+                  <span>Proceed to Checkout ({cartCount} items)</span>
                   <ArrowRight size={15} className="group-hover:translate-x-1 transition-transform" />
                 </button>
 
-                <p className="text-[10px] text-slate-400 text-center flex items-center justify-center gap-1">
+                <p className="text-xs text-slate-400 text-center flex items-center justify-center gap-1">
                   <ShieldCheck size={12} className="text-emerald-500" />
                   <span>Split payments protected by MarketNest Escrow</span>
                 </p>

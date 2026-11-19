@@ -14,6 +14,9 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import CheckoutPage from './pages/CheckoutPage';
 import OrdersPage from './pages/OrdersPage';
+import ProductDetailsPage from './pages/ProductDetailsPage';
+import CartPage from './pages/CartPage';
+import VendorStorePage from './pages/VendorStorePage';
 
 // Vendor Layout & Pages (Step 3 & Step 5)
 import VendorLayout from './layouts/VendorLayout';
@@ -25,6 +28,7 @@ import VendorSettingsPage from './pages/vendor/VendorSettingsPage';
 
 // Admin Page (Step 7)
 import AdminDashboardPage from './pages/admin/AdminDashboardPage';
+import AdminLoginPage from './pages/admin/AdminLoginPage';
 
 function Toast() {
   const { toast } = useStore();
@@ -51,25 +55,36 @@ function Toast() {
 
 function MainLayout() {
   const location = useLocation();
-  const isAuthPage = location.pathname === '/login' || location.pathname === '/register';
+  const isAuthPage = 
+    location.pathname === '/login' || 
+    location.pathname === '/register' || 
+    location.pathname === '/vendor/register' ||
+    location.pathname === '/admin/login';
   const isVendorPage = location.pathname.startsWith('/vendor');
   const isAdminPage = location.pathname.startsWith('/admin');
   const hideCustomerChrome = isAuthPage || isVendorPage || isAdminPage;
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#f8f9fa] text-slate-900 font-sans antialiased selection:bg-amber-400 selection:text-slate-950">
+    <div className="market-glass-theme min-h-screen w-full flex flex-col bg-slate-50 text-slate-900 font-sans antialiased selection:bg-indigo-600 selection:text-white">
       {!hideCustomerChrome && <Navbar />}
       
-      <main className={`flex-1 ${isAuthPage ? 'flex flex-col' : ''}`}>
+      <main className="flex-1 w-full flex flex-col">
         <Routes>
           {/* Customer / Public Routes */}
           <Route path="/" element={<HomePage />} />
+          <Route path="/products/:id" element={<ProductDetailsPage />} />
+          <Route path="/product/:id" element={<ProductDetailsPage />} />
+          <Route path="/store/:vendorId" element={<VendorStorePage />} />
+          <Route path="/cart" element={<CartPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/vendor/register" element={<RegisterPage initialRole="vendor" />} />
           <Route path="/checkout" element={<CheckoutPage />} />
           <Route path="/orders" element={<OrdersPage />} />
 
-          {/* Admin Protected Routes */}
+          {/* Admin Dedicated Login & Protected Workspace */}
+          <Route path="/admin/login" element={<AdminLoginPage />} />
+          <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
           <Route
             path="/admin/dashboard"
             element={

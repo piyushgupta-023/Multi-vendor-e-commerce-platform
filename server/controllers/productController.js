@@ -1,10 +1,10 @@
 const mongoose = require('mongoose');
 const Product = require('../models/Product');
+const Category = require('../models/Category');
 const VendorProfile = require('../models/VendorProfile');
 const { getClient: getESClient, isESConnected } = require('../config/elasticsearch');
 const { sendSuccess, sendError } = require('../utils/apiResponse');
 const { generateSKU, paginate, buildPaginationMeta } = require('../utils/helpers');
-const { mockVendorStore } = require('./vendorController');
 
 const isDbConnected = () => mongoose.connection.readyState === 1;
 
@@ -15,31 +15,28 @@ const isDbConnected = () => mongoose.connection.readyState === 1;
  */
 exports.searchProducts = async (req, res) => {
   try {
-    const { q = '', category, subcategory, minPrice, maxPrice, sort = 'relevance', page = 1, limit = 20 } = req.query;
-    const { skip, limit: lim } = paginate(page, limit);
-
     if (!isDbConnected()) {
-      let list = [...mockVendorStore.products];
-      if (q) {
-        list = list.filter(p => p.name.toLowerCase().includes(q.toLowerCase()) || p.description.toLowerCase().includes(q.toLowerCase()));
-      }
-      if (category && category !== 'All') {
-        list = list.filter(p => p.category.toLowerCase() === category.toLowerCase());
-      }
-      return sendSuccess(res, 200, 'Products fetched (Resilient Mode)', list, buildPaginationMeta(list.length, page, lim));
+      return res.status(500).json({ success: false, message: 'Database connection unavailable' });
     }
 
-    // Try Elasticsearch first
-    if (isESConnected() && q) {
+    const { q = '', search = '', category, subcategory, minPrice, maxPrice, minRating, sort = 'relevance', page = 1, limit = 20 } = req.query;
+    const searchTerm = q || search;
+    const { skip, limit: lim } = paginate(page, limit);
+
+    // Try Elasticsearch first if connected and query provided
+    if (isESConnected() && searchTerm) {
       try {
         const esClient = getESClient();
         const mustQueries = [{ match: { isActive: true } }];
-        mustQueries.push({ multi_match: { query: q, fields: ['name^3', 'description', 'tags^2', 'category'] } });
+        mustQueries.push({ multi_match: { query: searchTerm, fields: ['name^3', 'description', 'tags^2', 'category'] } });
         if (category && category !== 'All') mustQueries.push({ term: { category } });
 
         const filterQueries = [];
         if (minPrice || maxPrice) {
           filterQueries.push({ range: { price: { ...(minPrice && { gte: parseFloat(minPrice) }), ...(maxPrice && { lte: parseFloat(maxPrice) }) } } });
+        }
+        if (minRating) {
+          filterQueries.push({ range: { 'ratings.average': { gte: parseFloat(minRating) } } });
         }
 
         const sortOptions = sort === 'price_asc' ? [{ price: 'asc' }] : sort === 'price_desc' ? [{ price: 'desc' }] : sort === 'rating' ? [{ 'ratings.average': 'desc' }] : ['_score'];
@@ -55,7 +52,9 @@ exports.searchProducts = async (req, res) => {
         });
 
         const ids = esResult.hits.hits.map(h => h._id);
-        const products = await Product.find({ _id: { $in: ids } }).populate('vendorProfileId', 'storeName logo');
+        const products = await Product.find({ _id: { $in: ids } })
+          .populate('vendorProfileId', 'storeName logo rating isApproved category storeSlug')
+          .populate('vendorId', 'name email');
         const total = esResult.hits.total.value || 0;
 
         return sendSuccess(res, 200, 'Search results (Elasticsearch)', products, buildPaginationMeta(total, page, lim));
@@ -64,18 +63,36 @@ exports.searchProducts = async (req, res) => {
       }
     }
 
-    // MongoDB fallback
+    // MongoDB search & filter
     const filter = { isActive: true };
-    if (q) filter.$text = { $search: q };
+    if (searchTerm) {
+      filter.$or = [
+        { name: new RegExp(searchTerm, 'i') },
+        { description: new RegExp(searchTerm, 'i') },
+        { tags: new RegExp(searchTerm, 'i') },
+        { category: new RegExp(searchTerm, 'i') },
+      ];
+    }
     if (category && category !== 'All') filter.category = new RegExp(category, 'i');
     if (subcategory) filter.subcategory = new RegExp(subcategory, 'i');
     if (minPrice || maxPrice) filter.price = { ...(minPrice && { $gte: parseFloat(minPrice) }), ...(maxPrice && { $lte: parseFloat(maxPrice) }) };
+    if (minRating) filter['ratings.average'] = { $gte: parseFloat(minRating) };
 
-    const sortMap = { price_asc: { price: 1 }, price_desc: { price: -1 }, rating: { 'ratings.average': -1 }, newest: { createdAt: -1 } };
+    const sortMap = { 
+      price_asc: { price: 1 }, 
+      price_desc: { price: -1 }, 
+      rating: { 'ratings.average': -1 }, 
+      newest: { createdAt: -1 } 
+    };
     const sortQuery = sortMap[sort] || { createdAt: -1 };
 
     const [products, total] = await Promise.all([
-      Product.find(filter).sort(sortQuery).skip(skip).limit(lim).populate('vendorProfileId', 'storeName logo'),
+      Product.find(filter)
+        .sort(sortQuery)
+        .skip(skip)
+        .limit(lim)
+        .populate('vendorProfileId', 'storeName logo rating isApproved category storeSlug')
+        .populate('vendorId', 'name email'),
       Product.countDocuments(filter),
     ]);
 
@@ -92,15 +109,14 @@ exports.searchProducts = async (req, res) => {
  */
 exports.getProductById = async (req, res) => {
   try {
-    const { id } = req.params;
-
     if (!isDbConnected()) {
-      const prod = mockVendorStore.products.find(p => p._id === id || p.id === id);
-      if (prod) return sendSuccess(res, 200, 'Product fetched (Resilient Mode)', prod);
-      return sendError(res, 404, 'Product not found');
+      return res.status(500).json({ success: false, message: 'Database connection unavailable' });
     }
 
-    const product = await Product.findById(id).populate('vendorProfileId', 'storeName logo rating totalSales storeSlug');
+    const { id } = req.params;
+    const product = await Product.findById(id)
+      .populate('vendorProfileId', 'storeName logo rating totalSales storeSlug category')
+      .populate('vendorId', 'name email');
     if (!product) return sendError(res, 404, 'Product not found');
     return sendSuccess(res, 200, 'Product fetched', product);
   } catch (err) {
@@ -115,6 +131,10 @@ exports.getProductById = async (req, res) => {
  */
 exports.createProduct = async (req, res) => {
   try {
+    if (!isDbConnected()) {
+      return res.status(500).json({ success: false, message: 'Database connection unavailable' });
+    }
+
     const userId = req.user._id || req.user.id;
     const {
       title,
@@ -143,12 +163,10 @@ exports.createProduct = async (req, res) => {
     const formattedComparePrice = discountPrice !== undefined ? parseFloat(discountPrice) : (comparePrice !== undefined ? parseFloat(comparePrice) : undefined);
     const formattedStock = parseInt(stock, 10) || 0;
 
-    // Normalizing image array
     const formattedImages = Array.isArray(images)
       ? images.map((img, idx) => typeof img === 'string' ? { url: img, isPrimary: idx === 0 } : img)
       : [];
 
-    // Normalizing tags
     const formattedTags = Array.isArray(tags)
       ? tags.map(t => String(t).trim().toLowerCase())
       : typeof tags === 'string'
@@ -156,40 +174,8 @@ exports.createProduct = async (req, res) => {
       : [];
 
     const formattedSpecs = specs || attributes;
+    const categoryRecord = await Category.findOrCreateByName(category);
 
-    if (!isDbConnected()) {
-      const mockId = `mock_prod_${Date.now()}`;
-      const newMockProd = {
-        _id: mockId,
-        id: mockId,
-        name: productName,
-        title: productName,
-        description: description || '',
-        category,
-        subcategory,
-        price: formattedPrice,
-        comparePrice: formattedComparePrice,
-        discountPrice: formattedComparePrice,
-        stock: formattedStock,
-        sku: req.body.sku || `PROD-${Date.now().toString().slice(-6)}`,
-        tags: formattedTags,
-        images: formattedImages.length > 0 ? formattedImages : [{ url: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=600&fit=crop&q=80', isPrimary: true }],
-        attributes: formattedSpecs,
-        specs: formattedSpecs,
-        weight,
-        isFeatured,
-        isActive: true,
-        vendorId: userId,
-        vendorProfileId: { storeName: req.user.storeName || 'TechNova Electronics' },
-        createdAt: new Date().toISOString(),
-        views: 0,
-      };
-
-      mockVendorStore.products.unshift(newMockProd);
-      return sendSuccess(res, 201, 'Product created successfully (Resilient Mode)', newMockProd);
-    }
-
-    // Lookup vendor profile
     let vendorProfile = await VendorProfile.findOne({ userId });
     if (!vendorProfile && req.user.role === 'admin') {
       vendorProfile = await VendorProfile.findOne();
@@ -205,6 +191,7 @@ exports.createProduct = async (req, res) => {
       price: formattedPrice,
       comparePrice: formattedComparePrice,
       category,
+      categoryId: categoryRecord._id,
       subcategory,
       stock: formattedStock,
       sku,
@@ -216,7 +203,6 @@ exports.createProduct = async (req, res) => {
       isActive: true,
     });
 
-    // Sync to Elasticsearch if online
     if (isESConnected()) {
       try {
         await getESClient().index({
@@ -250,26 +236,12 @@ exports.createProduct = async (req, res) => {
  */
 exports.updateProduct = async (req, res) => {
   try {
+    if (!isDbConnected()) {
+      return res.status(500).json({ success: false, message: 'Database connection unavailable' });
+    }
+
     const { id } = req.params;
     const userId = req.user._id || req.user.id;
-
-    if (!isDbConnected()) {
-      const idx = mockVendorStore.products.findIndex(p => p._id === id || p.id === id);
-      if (idx === -1) return sendError(res, 404, 'Product not found');
-
-      const existing = mockVendorStore.products[idx];
-      const updated = {
-        ...existing,
-        ...req.body,
-        name: req.body.title || req.body.name || existing.name,
-        price: req.body.price !== undefined ? parseFloat(req.body.price) : existing.price,
-        comparePrice: req.body.discountPrice !== undefined ? parseFloat(req.body.discountPrice) : (req.body.comparePrice !== undefined ? parseFloat(req.body.comparePrice) : existing.comparePrice),
-        stock: req.body.stock !== undefined ? parseInt(req.body.stock, 10) : existing.stock,
-      };
-
-      mockVendorStore.products[idx] = updated;
-      return sendSuccess(res, 200, 'Product updated successfully (Resilient Mode)', updated);
-    }
 
     const query = req.user.role === 'admin' ? { _id: id } : { _id: id, vendorId: userId };
     const product = await Product.findOne(query);
@@ -278,10 +250,13 @@ exports.updateProduct = async (req, res) => {
       return sendError(res, 404, 'Product not found or you are not authorized to edit this product.');
     }
 
-    // Apply updates
     if (req.body.title || req.body.name) product.name = (req.body.title || req.body.name).trim();
     if (req.body.description !== undefined) product.description = req.body.description;
-    if (req.body.category) product.category = req.body.category;
+    if (req.body.category) {
+      product.category = req.body.category;
+      const categoryRecord = await Category.findOrCreateByName(req.body.category);
+      product.categoryId = categoryRecord._id;
+    }
     if (req.body.subcategory !== undefined) product.subcategory = req.body.subcategory;
     if (req.body.price !== undefined) product.price = parseFloat(req.body.price);
     if (req.body.discountPrice !== undefined) product.comparePrice = parseFloat(req.body.discountPrice);
@@ -297,7 +272,6 @@ exports.updateProduct = async (req, res) => {
 
     await product.save();
 
-    // Update in ES if online
     if (isESConnected()) {
       try {
         await getESClient().update({
@@ -326,15 +300,12 @@ exports.updateProduct = async (req, res) => {
  */
 exports.deleteProduct = async (req, res) => {
   try {
+    if (!isDbConnected()) {
+      return res.status(500).json({ success: false, message: 'Database connection unavailable' });
+    }
+
     const { id } = req.params;
     const userId = req.user._id || req.user.id;
-
-    if (!isDbConnected()) {
-      const idx = mockVendorStore.products.findIndex(p => p._id === id || p.id === id);
-      if (idx === -1) return sendError(res, 404, 'Product not found');
-      mockVendorStore.products.splice(idx, 1);
-      return sendSuccess(res, 200, 'Product removed successfully (Resilient Mode)');
-    }
 
     const query = req.user.role === 'admin' ? { _id: id } : { _id: id, vendorId: userId };
     const product = await Product.findOne(query);
@@ -343,11 +314,9 @@ exports.deleteProduct = async (req, res) => {
       return sendError(res, 404, 'Product not found or you are not authorized to delete it.');
     }
 
-    // Soft-delete
     product.isActive = false;
     await product.save();
 
-    // Remove from ES
     if (isESConnected()) {
       try {
         await getESClient().delete({ index: 'products', id });
@@ -367,9 +336,12 @@ exports.deleteProduct = async (req, res) => {
 exports.getFeaturedProducts = async (req, res) => {
   try {
     if (!isDbConnected()) {
-      return sendSuccess(res, 200, 'Featured products', mockVendorStore.products.filter(p => p.isFeatured));
+      return res.status(500).json({ success: false, message: 'Database connection unavailable' });
     }
-    const products = await Product.find({ isFeatured: true, isActive: true }).limit(12).populate('vendorProfileId', 'storeName logo');
+    const products = await Product.find({ isFeatured: true, isActive: true })
+      .limit(12)
+      .populate('vendorProfileId', 'storeName logo rating isApproved category storeSlug')
+      .populate('vendorId', 'name email');
     return sendSuccess(res, 200, 'Featured products', products);
   } catch (err) {
     return sendError(res, 500, err.message);
@@ -383,13 +355,7 @@ exports.getFeaturedProducts = async (req, res) => {
 exports.getCategories = async (req, res) => {
   try {
     if (!isDbConnected()) {
-      return sendSuccess(res, 200, 'Categories fetched', [
-        { _id: 'Electronics', count: 4 },
-        { _id: 'Fashion', count: 2 },
-        { _id: 'Home & Living', count: 2 },
-        { _id: 'Sports & Fitness', count: 2 },
-        { _id: 'Beauty & Personal Care', count: 3 },
-      ]);
+      return res.status(500).json({ success: false, message: 'Database connection unavailable' });
     }
     const categories = await Product.aggregate([
       { $match: { isActive: true } },
@@ -408,11 +374,11 @@ exports.getCategories = async (req, res) => {
  */
 exports.getProductsByVendor = async (req, res) => {
   try {
-    const { vendorId } = req.params;
     if (!isDbConnected()) {
-      return sendSuccess(res, 200, 'Vendor products', mockVendorStore.products);
+      return res.status(500).json({ success: false, message: 'Database connection unavailable' });
     }
-    const products = await Product.find({ vendorId, isActive: true }).populate('vendorProfileId', 'storeName logo');
+    const { vendorId } = req.params;
+    const products = await Product.find({ vendorId, isActive: true }).populate('vendorProfileId', 'storeName logo rating');
     return sendSuccess(res, 200, 'Vendor products', products);
   } catch (err) {
     return sendError(res, 500, err.message);
@@ -426,36 +392,14 @@ exports.getProductsByVendor = async (req, res) => {
  */
 exports.getMyProducts = async (req, res) => {
   try {
+    if (!isDbConnected()) {
+      return res.status(500).json({ success: false, message: 'Database connection unavailable' });
+    }
+
     const userId = req.user._id || req.user.id;
     const { search = '', q = '', category = 'All', stockStatus = 'all', page = 1, limit = 20, sort = 'newest' } = req.query;
     const searchQuery = search || q;
     const { skip, limit: lim } = paginate(page, limit);
-
-    if (!isDbConnected()) {
-      let list = [...mockVendorStore.products];
-      if (searchQuery) {
-        const sq = searchQuery.toLowerCase();
-        list = list.filter(p => (p.name || p.title || '').toLowerCase().includes(sq) || (p.sku || '').toLowerCase().includes(sq));
-      }
-      if (category && category !== 'All') {
-        list = list.filter(p => (p.category || '').toLowerCase() === category.toLowerCase());
-      }
-      if (stockStatus === 'in-stock' || stockStatus === 'in') {
-        list = list.filter(p => p.stock > 10);
-      } else if (stockStatus === 'low-stock' || stockStatus === 'low') {
-        list = list.filter(p => p.stock > 0 && p.stock <= 10);
-      } else if (stockStatus === 'out-of-stock' || stockStatus === 'out') {
-        list = list.filter(p => p.stock <= 0);
-      }
-
-      return sendSuccess(res, 200, 'Vendor products fetched (Resilient Mode)', list, {
-        ...buildPaginationMeta(list.length, page, lim),
-        total: list.length,
-        inStockCount: list.filter(p => p.stock > 10).length,
-        lowStockCount: list.filter(p => p.stock > 0 && p.stock <= 10).length,
-        outOfStockCount: list.filter(p => p.stock <= 0).length,
-      });
-    }
 
     const filter = { vendorId: userId };
     if (searchQuery) {

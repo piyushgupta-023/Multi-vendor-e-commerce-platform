@@ -192,3 +192,139 @@ exports.updateCommissionRate = async (req, res) => {
     return sendError(res, 500, err.message);
   }
 };
+
+/**
+ * GET /api/admin/stats
+ * Aggregate KPIs: Total Revenue, Total Orders, Active Catalog Items, Registered Customers
+ */
+exports.getStats = async (req, res) => {
+  try {
+    const [
+      totalUsers,
+      totalVendors,
+      totalProducts,
+      totalOrders,
+      revenueAgg,
+      splitAgg,
+      pendingVendors,
+      recentOrders
+    ] = await Promise.all([
+      User.countDocuments({ role: 'customer' }),
+      User.countDocuments({ role: 'vendor' }),
+      Product.countDocuments({ isActive: true }),
+      Order.countDocuments(),
+      Order.aggregate([
+        { $group: { _id: null, totalRevenue: { $sum: '$totalAmount' } } }
+      ]),
+      PaymentSplit.aggregate([
+        { $group: { _id: null, totalCommission: { $sum: '$commissionAmount' } } }
+      ]),
+      VendorProfile.countDocuments({ isApproved: false }),
+      Order.find()
+        .sort({ createdAt: -1 })
+        .limit(8)
+        .populate('customerId', 'name email')
+    ]);
+
+    const totalRevenue = revenueAgg[0]?.totalRevenue || 0;
+    const netCommission = splitAgg[0]?.totalCommission || Math.round(totalRevenue * 0.10);
+
+    return sendSuccess(res, 200, 'Admin platform stats retrieved successfully', {
+      totalRevenue,
+      totalOrders,
+      totalProducts,
+      totalCustomers: totalUsers,
+      totalVendors,
+      pendingVendors,
+      netCommission,
+      recentOrders,
+    });
+  } catch (err) {
+    return sendError(res, 500, err.message);
+  }
+};
+
+/**
+ * GET /api/admin/products
+ * Fetch full product catalog with vendor details, pagination and optional search/category filter
+ */
+exports.getAllProducts = async (req, res) => {
+  try {
+    const { page = 1, limit = 100, category, search } = req.query;
+    const { skip, limit: lim } = paginate(page, limit);
+    const filter = {};
+    if (category && category !== 'All') filter.category = new RegExp(category, 'i');
+    if (search) {
+      filter.$or = [
+        { name: new RegExp(search, 'i') },
+        { description: new RegExp(search, 'i') },
+        { tags: new RegExp(search, 'i') },
+      ];
+    }
+
+    const [products, total] = await Promise.all([
+      Product.find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(lim)
+        .populate('vendorProfileId', 'storeName logo')
+        .populate('vendorId', 'name email'),
+      Product.countDocuments(filter),
+    ]);
+
+    return sendSuccess(res, 200, 'Admin product catalog fetched successfully', products, buildPaginationMeta(total, page, lim));
+  } catch (err) {
+    return sendError(res, 500, err.message);
+  }
+};
+
+/**
+ * PATCH /api/admin/orders/:id/status
+ * Update master order status and cascade to child suborders
+ */
+exports.updateOrderStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    const allowedStatuses = ['placed', 'packed', 'shipped', 'delivered', 'cancelled'];
+
+    if (!status || !allowedStatuses.includes(status)) {
+      return sendError(res, 400, `Invalid order status. Allowed: ${allowedStatuses.join(', ')}`);
+    }
+
+    const order = await Order.findById(id);
+    if (!order) return sendError(res, 404, 'Order not found');
+
+    order.orderStatus = status;
+    if (status === 'delivered') {
+      order.deliveredAt = new Date();
+      if (order.paymentMethod === 'cod') {
+        order.paymentStatus = 'paid';
+      }
+    }
+    await order.save();
+
+    // Propagate status update to all related SubOrders
+    await SubOrder.updateMany(
+      { orderId: order._id },
+      {
+        $set: {
+          status,
+          ...(status === 'delivered' ? { deliveredAt: new Date() } : {}),
+        },
+        $push: {
+          statusHistory: {
+            status,
+            note: `Status set to ${status.toUpperCase()} by Administrator`,
+            timestamp: new Date(),
+            updatedBy: req.user._id,
+          },
+        },
+      }
+    );
+
+    return sendSuccess(res, 200, `Order ${order.orderNumber || order._id} updated to ${status}`, order);
+  } catch (err) {
+    return sendError(res, 500, err.message);
+  }
+};

@@ -1,895 +1,671 @@
 require('dotenv').config();
 const mongoose = require('mongoose');
+const connectDB = require('./config/db');
 const User = require('./models/User');
 const VendorProfile = require('./models/VendorProfile');
+const Category = require('./models/Category');
 const Product = require('./models/Product');
-const Cart = require('./models/Cart');
 const Order = require('./models/Order');
 const SubOrder = require('./models/SubOrder');
 const PaymentSplit = require('./models/PaymentSplit');
 const Review = require('./models/Review');
 const Coupon = require('./models/Coupon');
 
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/marketplace';
-
-// ─── Vendor Data ───────────────────────────────────────────────────────────────
+// ─── 3 Default Vendors (TechNova Electronics, UrbanThread Fashion, CasaCraft Home & Kitchen) ───
 const vendorsData = [
   {
     name: 'TechNova Electronics',
-    email: 'technova@marketplace.com',
+    email: 'technova@marketnest.com',
+    password: 'admin123',
     storeName: 'TechNova Electronics',
-    storeDescription: 'Premium electronics and gadgets from top global brands. Authorized dealer for Apple, Samsung, Sony, and more.',
+    storeDescription: 'Authorized flagship electronics, high-fidelity wireless audio, noise-cancelling headphones, and smart home speakers.',
     category: 'Electronics',
     logo: 'https://images.unsplash.com/photo-1550009158-9ebf69173e03?w=300&h=300&fit=crop&q=80',
     banner: 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=1200&h=400&fit=crop&q=80',
     commissionRate: 8,
     rating: 4.8,
-    totalSales: 1250,
-    gstNumber: 'GST29AAACT2727Q1ZW',
+    totalSales: 1850,
   },
   {
-    name: 'StyleForward Fashion',
-    email: 'styleforward@marketplace.com',
-    storeName: 'StyleForward Fashion',
-    storeDescription: 'Trendsetting fashion for men, women, and kids. Latest runway styles at direct-to-consumer prices.',
+    name: 'UrbanThread Fashion',
+    email: 'urbanthread@marketnest.com',
+    password: 'admin123',
+    storeName: 'UrbanThread Fashion',
+    storeDescription: 'Curated contemporary apparel, bespoke leather jackets, tailored outerwear, and minimalist titanium watches.',
     category: 'Fashion',
     logo: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=300&h=300&fit=crop&q=80',
     banner: 'https://images.unsplash.com/photo-1445205170230-053b83016050?w=1200&h=400&fit=crop&q=80',
     commissionRate: 12,
-    rating: 4.5,
+    rating: 4.7,
     totalSales: 3400,
-    gstNumber: 'GST27AABCS1429B1Z4',
   },
   {
-    name: 'HomeBliss Furniture',
-    email: 'homebliss@marketplace.com',
-    storeName: 'HomeBliss Furniture',
-    storeDescription: 'Elevate your living spaces with handcrafted solid wood furniture, bespoke décor, and ergonomic living solutions.',
+    name: 'CasaCraft Home & Kitchen',
+    email: 'casacraft@marketnest.com',
+    password: 'admin123',
+    storeName: 'CasaCraft Home & Kitchen',
+    storeDescription: 'Artisan handcrafted solid wood furniture, bespoke home décor, and high-performance lifestyle kitchen appliances.',
     category: 'Home & Living',
     logo: 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=300&h=300&fit=crop&q=80',
     banner: 'https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?w=1200&h=400&fit=crop&q=80',
     commissionRate: 10,
-    rating: 4.6,
-    totalSales: 890,
-    gstNumber: 'GST24AAABH1234C1Z1',
-  },
-  {
-    name: 'FitLife Sports',
-    email: 'fitlife@marketplace.com',
-    storeName: 'FitLife Sports',
-    storeDescription: 'Your premier destination for professional sports equipment, high-performance activewear, and workout gear.',
-    category: 'Sports & Fitness',
-    logo: 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=300&h=300&fit=crop&q=80',
-    banner: 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=1200&h=400&fit=crop&q=80',
-    commissionRate: 9,
-    rating: 4.7,
-    totalSales: 2100,
-    gstNumber: 'GST07AACCF1122D1Z5',
-  },
-  {
-    name: 'GourmetKart Foods',
-    email: 'gourmetkart@marketplace.com',
-    storeName: 'GourmetKart Foods',
-    storeDescription: 'Artisanal pantry staples, cold-pressed oils, exotic spices, and luxury confectionery curated globally.',
-    category: 'Food & Gourmet',
-    logo: 'https://images.unsplash.com/photo-1506617564039-2f3b650b7010?w=300&h=300&fit=crop&q=80',
-    banner: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=1200&h=400&fit=crop&q=80',
-    commissionRate: 15,
-    rating: 4.4,
-    totalSales: 5600,
-    gstNumber: 'GST19AABCG5678E1Z2',
-  },
-  {
-    name: 'BeautyBloom Cosmetics',
-    email: 'beautybloom@marketplace.com',
-    storeName: 'BeautyBloom Cosmetics',
-    storeDescription: 'Clean beauty, dermatologically tested serums, luxury fragrances, and holistic personal care essentials.',
-    category: 'Beauty & Personal Care',
-    logo: 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=300&h=300&fit=crop&q=80',
-    banner: 'https://images.unsplash.com/photo-1576426863848-c21f53c60b19?w=1200&h=400&fit=crop&q=80',
-    commissionRate: 11,
     rating: 4.9,
-    totalSales: 7800,
-    gstNumber: 'GST09AAABH9012F1Z9',
+    totalSales: 2150,
   },
 ];
 
-// ─── Product Data (30+ products across categories) ──────────────────────────
+// ─── 16 Real Products across 4 Categories ────────────────────────────────────
+// Categories: Electronics, Fashion, Home & Kitchen, Appliances
 const productsData = [
-  // Electronics (TechNova)
+  // ──── 1. ELECTRONICS (Vendor: TechNova) ───────────────────────────────────
   {
-    vendorIndex: 0,
-    name: 'Apple iPhone 15 Pro Max 256GB Titanium',
-    description: 'The definitive flagship iPhone. Aerospace-grade titanium body, revolutionary A17 Pro 3nm chipset, customizable Action Button, and 5x optical telephoto lens.',
-    price: 134900,
-    comparePrice: 159900,
-    category: 'Electronics',
-    subcategory: 'Smartphones',
-    tags: ['apple', 'iphone', 'flagship', '5g', 'titanium'],
-    images: [
-      { url: 'https://images.unsplash.com/photo-1695048133142-1a20484d2569?w=800&fit=crop&q=80', isPrimary: true },
-      { url: 'https://images.unsplash.com/photo-1592750475338-74b7b21085ab?w=800&fit=crop&q=80' },
-    ],
-    stock: 45,
-    sku: 'APPL-IP15PM-256',
-    weight: 221,
-    isFeatured: true,
-    attributes: { brand: 'Apple', storage: '256GB', color: 'Natural Titanium', connectivity: '5G' },
-    shippingInfo: { isFreeShipping: true, estimatedDays: 2 },
-  },
-  {
-    vendorIndex: 0,
-    name: 'Samsung Galaxy S24 Ultra AI Smartphone 512GB',
-    description: 'Transform productivity with Galaxy AI: Circle to Search, Live Call Translation, Note Assist, 200MP Quad Tele System, and integrated S Pen in a sleek titanium frame.',
-    price: 129999,
-    comparePrice: 149999,
-    category: 'Electronics',
-    subcategory: 'Smartphones',
-    tags: ['samsung', 'galaxy', 'ai', '5g', 'spen'],
-    images: [
-      { url: 'https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?w=800&fit=crop&q=80', isPrimary: true },
-    ],
-    stock: 30,
-    sku: 'SMSG-S24U-512',
-    weight: 232,
-    isFeatured: true,
-    attributes: { brand: 'Samsung', storage: '512GB', color: 'Titanium Gray', connectivity: '5G' },
-    shippingInfo: { isFreeShipping: true, estimatedDays: 2 },
-  },
-  {
-    vendorIndex: 0,
-    name: 'Sony WH-1000XM5 Wireless Noise-Canceling Headphones',
-    description: 'Industry-standard active noise cancellation powered by dual processors and 8 microphones. Precise voice pickup, Hi-Res wireless audio, and 30-hour battery life.',
-    price: 29990,
+    vendorName: 'TechNova Electronics',
+    name: 'Sony WH-1000XM5 Wireless Noise Cancelling Headphones',
+    description: 'Industry-leading noise canceling with two processors and 8 microphones. Magnificent sound quality engineered with the new Integrated Processor V1. Up to 30-hour battery life with quick charging (3 min charge for 3 hours of playback). Ultra-comfortable, lightweight design with soft fit leather.',
+    price: 26990,
     comparePrice: 34990,
     category: 'Electronics',
     subcategory: 'Audio',
-    tags: ['sony', 'anc', 'headphones', 'bluetooth', 'audiophile'],
-    images: [
-      { url: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&fit=crop&q=80', isPrimary: true },
-    ],
-    stock: 85,
-    sku: 'SONY-WHXM5-BLK',
-    weight: 250,
+    tags: ['headphones', 'sony', 'wireless', 'noise cancelling', 'bluetooth', 'audio'],
+    stock: 45,
+    ratings: { average: 4.8, count: 842 },
     isFeatured: true,
-    attributes: { brand: 'Sony', color: 'Silver', batteryLife: '30h', anc: 'Dual-Chip' },
-    shippingInfo: { isFreeShipping: true, estimatedDays: 3 },
+    attributes: {
+      Brand: 'Sony',
+      Model: 'WH-1000XM5',
+      Color: 'Silver White',
+      Connectivity: 'Bluetooth 5.2 / 3.5mm Aux',
+      BatteryLife: '30 Hours',
+      Warranty: '1 Year Manufacturer',
+    },
+    images: [
+      { url: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&auto=format&fit=crop&q=80', isPrimary: true },
+      { url: 'https://images.unsplash.com/photo-1484704849700-f032a568e944?w=800&auto=format&fit=crop&q=80', isPrimary: false },
+      { url: 'https://images.unsplash.com/photo-1546435770-a3e426bf472b?w=800&auto=format&fit=crop&q=80', isPrimary: false },
+    ],
+    shippingInfo: { isFreeShipping: true, shippingCost: 0, estimatedDays: 1 },
   },
   {
-    vendorIndex: 0,
-    name: 'Apple MacBook Air 13" M3 Chip 512GB',
-    description: 'Impossibly thin and fast. Liquid Retina display, up to 18 hours of battery life, dual external display support, and MagSafe 3 charging in iconic Midnight aluminum.',
-    price: 114900,
-    comparePrice: 134900,
+    vendorName: 'TechNova Electronics',
+    name: 'Apple AirPods Pro (2nd Generation) with MagSafe Case (USB-C)',
+    description: 'Up to 2x more Active Noise Cancellation than previous generation. Transparency mode lets outside sound in, so you can hear what is going on around you. Personalized Spatial Audio with dynamic head tracking places sound all around you.',
+    price: 20999,
+    comparePrice: 24900,
     category: 'Electronics',
-    subcategory: 'Laptops',
-    tags: ['apple', 'macbook', 'm3', 'laptop', 'lightweight'],
-    images: [
-      { url: 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=800&fit=crop&q=80', isPrimary: true },
-    ],
-    stock: 20,
-    sku: 'APPL-MBA-M3-13',
-    weight: 1240,
+    subcategory: 'Audio',
+    tags: ['apple', 'airpods', 'earbuds', 'wireless', 'usb-c', 'anc'],
+    stock: 60,
+    ratings: { average: 4.7, count: 1250 },
     isFeatured: true,
-    attributes: { brand: 'Apple', ram: '8GB Unified', storage: '512GB SSD', screen: '13.6-inch' },
-    shippingInfo: { isFreeShipping: true, estimatedDays: 3 },
+    attributes: {
+      Brand: 'Apple',
+      Model: 'AirPods Pro 2',
+      Color: 'Glossy White',
+      Connectivity: 'Bluetooth 5.3',
+      BatteryLife: '30 Hours with Case',
+      Warranty: '1 Year Apple Official',
+    },
+    images: [
+      { url: 'https://images.unsplash.com/photo-1600294037681-c80b4cb5b434?w=800&auto=format&fit=crop&q=80', isPrimary: true },
+      { url: 'https://images.unsplash.com/photo-1588423771073-b8903fbb85b5?w=800&auto=format&fit=crop&q=80', isPrimary: false },
+      { url: 'https://images.unsplash.com/photo-1572569511254-d8f925fe2cbb?w=800&auto=format&fit=crop&q=80', isPrimary: false },
+    ],
+    shippingInfo: { isFreeShipping: true, shippingCost: 0, estimatedDays: 1 },
   },
   {
-    vendorIndex: 0,
-    name: 'LG C3 55-inch 4K OLED Smart TV',
-    description: 'Self-lit OLED pixels for infinite contrast, α9 AI Processor Gen6, 120Hz refresh rate, Dolby Vision IQ, and Dolby Atmos cinematic sound experience.',
-    price: 139990,
-    comparePrice: 179990,
+    vendorName: 'TechNova Electronics',
+    name: 'Marshall Stanmore III Bluetooth Home Speaker',
+    description: 'Re-engineered for an expansive home stereo soundstage. Stanmore III delivers heavy-hitting signature Marshall audio with Bluetooth 5.2 and RCA/3.5mm analog inputs. Iconic vintage brass detailing and tactile control knobs.',
+    price: 31999,
+    comparePrice: 39999,
     category: 'Electronics',
-    subcategory: 'Televisions',
-    tags: ['lg', 'oled', 'smarttv', '4k', 'gaming'],
+    subcategory: 'Speakers',
+    tags: ['marshall', 'speaker', 'bluetooth', 'audio', 'vintage', 'bass'],
+    stock: 22,
+    ratings: { average: 4.9, count: 420 },
+    isFeatured: true,
+    attributes: {
+      Brand: 'Marshall',
+      Model: 'Stanmore III',
+      Color: 'Vintage Black & Brass',
+      PowerOutput: '80 Watts RMS',
+      Connectivity: 'Bluetooth 5.2 / RCA / 3.5mm',
+      Warranty: '2 Years Manufacturer',
+    },
     images: [
-      { url: 'https://images.unsplash.com/photo-1593359677879-a4bb92f829d1?w=800&fit=crop&q=80', isPrimary: true },
+      { url: 'https://images.unsplash.com/photo-1545454675-3531b543be5d?w=800&auto=format&fit=crop&q=80', isPrimary: true },
+      { url: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=800&auto=format&fit=crop&q=80', isPrimary: false },
+      { url: 'https://images.unsplash.com/photo-1511379938547-c1f69419868d?w=800&auto=format&fit=crop&q=80', isPrimary: false },
     ],
-    stock: 12,
-    sku: 'LG-OLED55-C3',
-    weight: 16000,
-    isFeatured: false,
-    attributes: { brand: 'LG', size: '55-inch', resolution: '4K UHD', refreshRate: '120Hz' },
-    shippingInfo: { isFreeShipping: true, estimatedDays: 5 },
+    shippingInfo: { isFreeShipping: true, shippingCost: 0, estimatedDays: 2 },
   },
   {
-    vendorIndex: 0,
-    name: 'Apple iPad Air 11-inch M2 Wi-Fi 128GB',
-    description: 'Redesigned iPad Air driven by the M2 chip. Incredible Liquid Retina display, landscape 12MP Ultra Wide front camera with Center Stage, and Wi-Fi 6E.',
-    price: 59900,
-    comparePrice: 64900,
+    vendorName: 'TechNova Electronics',
+    name: 'UltraSlim 4K UHD Smart Gaming Monitor 27-Inch 144Hz',
+    description: 'Breathtaking clarity with 3840x2160 UHD resolution, 144Hz refresh rate, 1ms response time, and HDR400 certified panel. Features 99% sRGB color gamut coverage and dual HDMI 2.1 ports for console and PC gaming.',
+    price: 28499,
+    comparePrice: 42999,
     category: 'Electronics',
-    subcategory: 'Tablets',
-    tags: ['apple', 'ipad', 'm2', 'tablet'],
-    images: [
-      { url: 'https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?w=800&fit=crop&q=80', isPrimary: true },
-    ],
-    stock: 35,
-    sku: 'APPL-IPAD-AIR-M2',
-    weight: 462,
+    subcategory: 'Monitors',
+    tags: ['monitor', '4k', 'gaming', '144hz', 'display', 'hdr'],
+    stock: 18,
+    ratings: { average: 4.6, count: 312 },
     isFeatured: false,
-    attributes: { brand: 'Apple', storage: '128GB', chip: 'M2', color: 'Starlight' },
-    shippingInfo: { isFreeShipping: true, estimatedDays: 2 },
+    attributes: {
+      Brand: 'TechNova Pro',
+      ScreenSize: '27 Inches',
+      Resolution: '4K UHD (3840 x 2160)',
+      RefreshRate: '144Hz',
+      PanelType: 'IPS Anti-Glare',
+      Warranty: '3 Years Comprehensive',
+    },
+    images: [
+      { url: 'https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?w=800&auto=format&fit=crop&q=80', isPrimary: true },
+      { url: 'https://images.unsplash.com/photo-1585792180666-f75a7c518801?w=800&auto=format&fit=crop&q=80', isPrimary: false },
+      { url: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=800&auto=format&fit=crop&q=80', isPrimary: false },
+    ],
+    shippingInfo: { isFreeShipping: true, shippingCost: 0, estimatedDays: 2 },
   },
 
-  // Fashion (StyleForward)
+  // ──── 2. FASHION (Vendor: StyleHub) ───────────────────────────────────────
   {
-    vendorIndex: 1,
-    name: 'Men\'s Italian Wool Tailored Slim-Fit Blazer',
-    description: 'Bespoke tailoring crafted in pure Italian wool blend. Structured shoulders, double back vents, horn buttons, and contrast silk pick stitching on the lapels.',
-    price: 4999,
-    comparePrice: 8999,
-    category: 'Fashion',
-    subcategory: "Men's Wear",
-    tags: ['blazer', 'formal', 'menswear', 'wool', 'tailored'],
-    images: [
-      { url: 'https://images.unsplash.com/photo-1507679799987-c73779587ccf?w=800&fit=crop&q=80', isPrimary: true },
-    ],
-    stock: 120,
-    sku: 'SF-BLAZER-WOOL-NVY',
-    isFeatured: true,
-    attributes: { material: 'Italian Wool Blend', fit: 'Slim Fit', color: 'Midnight Navy', dryClean: 'Yes' },
-    shippingInfo: { isFreeShipping: true, estimatedDays: 4 },
-  },
-  {
-    vendorIndex: 1,
-    name: 'Women\'s French Chiffon Tiered Maxi Dress',
-    description: 'Ethereal garden-party maxi dress in airy French chiffon with subtle metallic thread detail. Halter neck, defined smocked waist, and cascading ruffle tiers.',
-    price: 2499,
-    comparePrice: 4499,
-    category: 'Fashion',
-    subcategory: "Women's Wear",
-    tags: ['dress', 'maxi', 'chiffon', 'floral', 'summer'],
-    images: [
-      { url: 'https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?w=800&fit=crop&q=80', isPrimary: true },
-    ],
-    stock: 90,
-    sku: 'SF-DRESS-CHIFFON-MAXI',
-    isFeatured: true,
-    attributes: { material: 'French Chiffon', pattern: 'Botanical Floral', length: 'Maxi' },
-    shippingInfo: { isFreeShipping: true, estimatedDays: 3 },
-  },
-  {
-    vendorIndex: 1,
-    name: 'Retro Classic White Streetwear Leather Sneakers',
-    description: 'Minimalist unisex tennis sneakers handcrafted from full-grain calfskin leather with vulcanized gum rubber cupsoles and Ortholite memory foam footbeds.',
+    vendorName: 'UrbanThread Fashion',
+    name: "Men's Classic Leather Biker Bomber Jacket - Vintage Espresso",
+    description: 'Masterfully crafted from 100% full-grain genuine lambskin leather. Features heavy-duty YKK gunmetal zippers, quilted viscose lining, zippered cuffs, and dual internal security pockets. Timeless silhouette that patinas with age.',
     price: 3499,
-    comparePrice: 5999,
+    comparePrice: 6999,
+    category: 'Fashion',
+    subcategory: 'Men Outerwear',
+    tags: ['jacket', 'leather', 'menswear', 'biker', 'vintage', 'fashion'],
+    stock: 35,
+    ratings: { average: 4.6, count: 185 },
+    isFeatured: true,
+    attributes: {
+      Brand: 'StyleHub Atelier',
+      Material: '100% Full-Grain Lambskin Leather',
+      Fit: 'Slim Regular',
+      Closure: 'Asymmetric YKK Heavy Zipper',
+      Color: 'Vintage Espresso Brown',
+      Care: 'Specialist Leather Clean',
+    },
+    images: [
+      { url: 'https://images.unsplash.com/photo-1551028719-00167b16eac5?w=800&auto=format&fit=crop&q=80', isPrimary: true },
+      { url: 'https://images.unsplash.com/photo-1495105787522-5334e3ffa0ef?w=800&auto=format&fit=crop&q=80', isPrimary: false },
+      { url: 'https://images.unsplash.com/photo-1520975954732-35dd22299614?w=800&auto=format&fit=crop&q=80', isPrimary: false },
+    ],
+    shippingInfo: { isFreeShipping: true, shippingCost: 0, estimatedDays: 1 },
+  },
+  {
+    vendorName: 'UrbanThread Fashion',
+    name: "Women's Oversized Cashmere Wool Blend Trench Coat",
+    description: 'An enduring wardrobe investment combining 70% virgin wool and 30% Mongolian cashmere. Designed with an elegant double-breasted button front, matching tie belt, deep slant pockets, and a fluid tailored silhouette.',
+    price: 4299,
+    comparePrice: 8499,
+    category: 'Fashion',
+    subcategory: 'Women Outerwear',
+    tags: ['coat', 'cashmere', 'wool', 'trench', 'womenswear', 'luxury'],
+    stock: 28,
+    ratings: { average: 4.8, count: 210 },
+    isFeatured: true,
+    attributes: {
+      Brand: 'StyleHub Atelier',
+      Material: '70% Virgin Wool / 30% Cashmere',
+      Length: 'Below-Knee Midi',
+      Color: 'Camel Tan',
+      Lining: '100% Silk Twill',
+      Care: 'Dry Clean Only',
+    },
+    images: [
+      { url: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=800&auto=format&fit=crop&q=80', isPrimary: true },
+      { url: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=800&auto=format&fit=crop&q=80', isPrimary: false },
+      { url: 'https://images.unsplash.com/photo-1485968579580-b6d095142e6e?w=800&auto=format&fit=crop&q=80', isPrimary: false },
+    ],
+    shippingInfo: { isFreeShipping: true, shippingCost: 0, estimatedDays: 2 },
+  },
+  {
+    vendorName: 'UrbanThread Fashion',
+    name: 'Handcrafted Italian Full-Grain Leather Chelsea Boots',
+    description: 'Artisanal Italian leather boots constructed with Goodyear welt durability. Elasticated side gussets and dual nylon pull tabs ensure effortless wear. Fitted with shock-absorbing memory foam insoles and non-slip Vibram rubber outsoles.',
+    price: 3899,
+    comparePrice: 7299,
     category: 'Fashion',
     subcategory: 'Footwear',
-    tags: ['sneakers', 'leather', 'unisex', 'minimalist', 'white-shoes'],
-    images: [
-      { url: 'https://images.unsplash.com/photo-1560769629-975ec94e6a86?w=800&fit=crop&q=80', isPrimary: true },
-    ],
-    stock: 150,
-    sku: 'SF-SNKR-CALF-WHT',
+    tags: ['boots', 'chelsea', 'leather', 'footwear', 'shoes', 'italian'],
+    stock: 50,
+    ratings: { average: 4.7, count: 164 },
     isFeatured: false,
-    attributes: { upper: 'Full-Grain Calfskin', sole: 'Vulcanized Rubber', closure: 'Lace-Up' },
-    shippingInfo: { isFreeShipping: true, estimatedDays: 4 },
+    attributes: {
+      Brand: 'Vannucci Milano',
+      UpperMaterial: 'Waxed Full-Grain Calf Leather',
+      Sole: 'Vibram Lugged Rubber Sole',
+      Construction: 'Goodyear Welted',
+      Color: 'Antique Cognac Brown',
+    },
+    images: [
+      { url: 'https://images.unsplash.com/photo-1638247025967-b4e38f787b76?w=800&auto=format&fit=crop&q=80', isPrimary: true },
+      { url: 'https://images.unsplash.com/photo-1549298916-b41d501d3772?w=800&auto=format&fit=crop&q=80', isPrimary: false },
+      { url: 'https://images.unsplash.com/photo-1560343090-f0409e92791a?w=800&auto=format&fit=crop&q=80', isPrimary: false },
+    ],
+    shippingInfo: { isFreeShipping: true, shippingCost: 0, estimatedDays: 1 },
   },
   {
-    vendorIndex: 1,
-    name: 'Handcrafted Vegetable-Tanned Leather Tote Bag',
-    description: 'Spacious everyday tote cut from rich vegetable-tanned leather that patinas gracefully with age. Padded 15" laptop sleeve, brass hardware, and key leash.',
-    price: 3899,
-    comparePrice: 6500,
+    vendorName: 'UrbanThread Fashion',
+    name: 'Minimalist Titanium Chronograph Waterproof Wristwatch',
+    description: 'Precision Japanese Miyota quartz movement encased in ultra-light aerospace-grade titanium. Features scratch-resistant sapphire crystal glass, 50-meter water resistance, luminous hands, and a quick-release Milanese mesh strap.',
+    price: 2499,
+    comparePrice: 4999,
     category: 'Fashion',
-    subcategory: 'Accessories',
-    tags: ['tote', 'leather', 'handbag', 'laptop-bag', 'luxury'],
-    images: [
-      { url: 'https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=800&fit=crop&q=80', isPrimary: true },
-    ],
+    subcategory: 'Watches',
+    tags: ['watch', 'chronograph', 'titanium', 'accessories', 'luxury'],
     stock: 40,
-    sku: 'SF-TOTE-VEG-TAN',
+    ratings: { average: 4.5, count: 340 },
     isFeatured: false,
-    attributes: { leather: 'Vegetable-Tanned Cowhide', capacity: '15L', hardware: 'Antique Brass' },
-    shippingInfo: { isFreeShipping: true, estimatedDays: 3 },
-  },
-  {
-    vendorIndex: 1,
-    name: 'Classic Polarized Aviator Sunglasses - 24K Gold Frame',
-    description: 'Timeless tear-drop aviator sunglasses featuring ultra-durable titanium frames plated in 24K gold, green polarized lenses offering 100% UVA/UVB protection.',
-    price: 1799,
-    comparePrice: 2999,
-    category: 'Fashion',
-    subcategory: 'Accessories',
-    tags: ['sunglasses', 'aviator', 'polarized', 'gold', 'eyewear'],
+    attributes: {
+      Brand: 'Chronos Atelier',
+      CaseDiameter: '40 mm',
+      CaseMaterial: 'Aerospace Grade 5 Titanium',
+      Glass: 'Anti-Reflective Sapphire Crystal',
+      WaterResistance: '5 ATM / 50 Meters',
+    },
     images: [
-      { url: 'https://images.unsplash.com/photo-1572635196237-14b3f281503f?w=800&fit=crop&q=80', isPrimary: true },
+      { url: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800&auto=format&fit=crop&q=80', isPrimary: true },
+      { url: 'https://images.unsplash.com/photo-1524805444758-089113d48a6d?w=800&auto=format&fit=crop&q=80', isPrimary: false },
+      { url: 'https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?w=800&auto=format&fit=crop&q=80', isPrimary: false },
     ],
-    stock: 80,
-    sku: 'SF-AVT-GOLD-POL',
-    isFeatured: false,
-    attributes: { frame: 'Titanium Gold-Plated', lens: 'Polarized TAC', uvRating: 'UV400' },
-    shippingInfo: { isFreeShipping: true, estimatedDays: 3 },
+    shippingInfo: { isFreeShipping: true, shippingCost: 0, estimatedDays: 1 },
   },
 
-  // Home & Living (HomeBliss)
+  // ──── 3. HOME & KITCHEN (Vendor: HomeElegance) ───────────────────────────
   {
-    vendorIndex: 2,
-    name: 'Nordic Solid Teak Wood Round Coffee Table',
-    description: 'Mid-century Scandinavian design sculpted from sustainably harvested plantation teak. Fluted solid timber pedestal base with water-resistant matte satin seal.',
-    price: 15999,
-    comparePrice: 24999,
+    vendorName: 'CasaCraft Home & Kitchen',
+    name: 'Handcrafted Teakwood Ergonomic Lounge Accent Chair',
+    description: 'Sustainably sourced kiln-dried plantation teak frame paired with hand-woven natural rattan caning. Ergonomically angled backrest and high-density linen foam seat cushion provide optimal lumbar support.',
+    price: 8999,
+    comparePrice: 15999,
     category: 'Home & Living',
     subcategory: 'Furniture',
-    tags: ['furniture', 'table', 'teak', 'scandinavian', 'living-room'],
-    images: [
-      { url: 'https://images.unsplash.com/photo-1533090161767-e6ffed986c88?w=800&fit=crop&q=80', isPrimary: true },
-    ],
-    stock: 25,
-    sku: 'HB-TABLE-TEAK-RND',
-    weight: 18000,
+    tags: ['chair', 'furniture', 'teakwood', 'handcrafted', 'accent chair', 'living room'],
+    stock: 15,
+    ratings: { average: 4.9, count: 98 },
     isFeatured: true,
-    attributes: { wood: 'Plantation Teak', diameter: '85cm', height: '45cm' },
-    shippingInfo: { isFreeShipping: true, estimatedDays: 6 },
-  },
-  {
-    vendorIndex: 2,
-    name: '1000 Thread Count Egyptian Cotton Sateen Bedding Set',
-    description: 'Hotel luxury at home. Loomed from 100% extra-long staple Giza Egyptian cotton in a silky 1000 TC sateen weave. Includes 1 duvet cover, 1 fitted sheet, 2 pillowcases.',
-    price: 3999,
-    comparePrice: 6999,
-    category: 'Home & Living',
-    subcategory: 'Bedding',
-    tags: ['bedding', 'egyptian-cotton', 'sateen', 'luxury', 'sheets'],
+    attributes: {
+      Brand: 'HomeElegance Living',
+      WoodType: '100% Solid Grade-A Plantation Teak',
+      Finish: 'Non-Toxic Natural Beeswax Matte Finish',
+      WeightCapacity: '150 kg',
+      Dimensions: '72 x 68 x 78 cm',
+      Assembly: 'Pre-Assembled',
+    },
     images: [
-      { url: 'https://images.unsplash.com/photo-1522771739844-6a9f6d5f14af?w=800&fit=crop&q=80', isPrimary: true },
+      { url: 'https://images.unsplash.com/photo-1580481077195-c22e4b4f99bf?w=800&auto=format&fit=crop&q=80', isPrimary: true },
+      { url: 'https://images.unsplash.com/photo-1567538096630-e0c55bd6374c?w=800&auto=format&fit=crop&q=80', isPrimary: false },
+      { url: 'https://images.unsplash.com/photo-1598300042247-d088f8ab3a91?w=800&auto=format&fit=crop&q=80', isPrimary: false },
     ],
-    stock: 65,
-    sku: 'HB-BED-GIZA-1000',
-    isFeatured: false,
-    attributes: { material: '100% Giza Egyptian Cotton', threadCount: 1000, size: 'King' },
-    shippingInfo: { isFreeShipping: true, estimatedDays: 3 },
+    shippingInfo: { isFreeShipping: true, shippingCost: 0, estimatedDays: 3 },
   },
   {
-    vendorIndex: 2,
-    name: 'Ceramic Ultrasonic Aromatherapy Diffuser & 6 Oils',
-    description: 'Hand-thrown matte white ceramic stone diffuser with ambient warm-glow LED. Ultrasonic cold-mist technology paired with 6 certified pure therapeutic essential oils.',
-    price: 1899,
-    comparePrice: 2999,
-    category: 'Home & Living',
-    subcategory: 'Home Décor',
-    tags: ['diffuser', 'aromatherapy', 'essential-oils', 'ceramic', 'wellness'],
-    images: [
-      { url: 'https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?w=800&fit=crop&q=80', isPrimary: true },
-    ],
-    stock: 110,
-    sku: 'HB-DIFF-STONE-WHT',
-    isFeatured: false,
-    attributes: { capacity: '300ml', coverage: '500 sq ft', runtime: '10 hours' },
-    shippingInfo: { isFreeShipping: true, estimatedDays: 4 },
-  },
-  {
-    vendorIndex: 2,
-    name: 'Cast Iron Dutch Oven 5.5 Quart Enamel Finish',
-    description: 'Heavyweight enameled cast iron braiser that delivers superior heat retention and uniform heating. Self-basting lid condensation rings, oven-safe up to 260°C.',
-    price: 4499,
-    comparePrice: 7999,
-    category: 'Home & Living',
-    subcategory: 'Kitchen & Dining',
-    tags: ['cookware', 'dutch-oven', 'cast-iron', 'enameled', 'kitchen'],
-    images: [
-      { url: 'https://images.unsplash.com/photo-1584269600464-37b1b58a9fe7?w=800&fit=crop&q=80', isPrimary: true },
-    ],
-    stock: 40,
-    sku: 'HB-DUTCH-OVEN-55',
-    weight: 6200,
-    isFeatured: true,
-    attributes: { capacity: '5.5 Quart', material: 'Enameled Cast Iron', color: 'Cobalt Blue' },
-    shippingInfo: { isFreeShipping: true, estimatedDays: 4 },
-  },
-  {
-    vendorIndex: 2,
-    name: 'Handwoven Jute & Cotton Geometric Area Rug 5x8 ft',
-    description: 'Textured natural organic jute interlocked with soft ivory recycled cotton yarns. Reversible, biodegradable, artisanal bohemian aesthetic.',
-    price: 3299,
+    vendorName: 'CasaCraft Home & Kitchen',
+    name: 'Nordic Minimalist Dimmable LED Arc Floor Lamp',
+    description: 'Sculptural architectural lighting with an elegant brushed brass arch and heavy solid Carrara marble base. Features touch-sensitive stepless dimming from 10% to 100% and 3 adjustable color temperatures.',
+    price: 2999,
     comparePrice: 5499,
     category: 'Home & Living',
-    subcategory: 'Home Décor',
-    tags: ['rug', 'jute', 'handwoven', 'boho', 'sustainable'],
-    images: [
-      { url: 'https://images.unsplash.com/photo-1600121848594-d8644e57abab?w=800&fit=crop&q=80', isPrimary: true },
-    ],
-    stock: 30,
-    sku: 'HB-RUG-JUTE-5X8',
+    subcategory: 'Lighting',
+    tags: ['lamp', 'lighting', 'floor lamp', 'nordic', 'marble', 'led'],
+    stock: 32,
+    ratings: { average: 4.6, count: 142 },
     isFeatured: false,
-    attributes: { dimensions: '5x8 feet', weave: 'Flatweave', material: '70% Jute, 30% Cotton' },
-    shippingInfo: { isFreeShipping: true, estimatedDays: 5 },
+    attributes: {
+      Brand: 'Lumiere Studios',
+      BaseMaterial: 'Authentic White Carrara Marble',
+      Shade: 'Spun Matte Aluminum',
+      MaxWattage: '18W Energy-Saving LED',
+      TotalHeight: '190 cm',
+    },
+    images: [
+      { url: 'https://images.unsplash.com/photo-1507473885765-e6ed057f782c?w=800&auto=format&fit=crop&q=80', isPrimary: true },
+      { url: 'https://images.unsplash.com/photo-1513506003901-1e6a229e2d15?w=800&auto=format&fit=crop&q=80', isPrimary: false },
+      { url: 'https://images.unsplash.com/photo-1540932239986-30128078f3c5?w=800&auto=format&fit=crop&q=80', isPrimary: false },
+    ],
+    shippingInfo: { isFreeShipping: true, shippingCost: 0, estimatedDays: 2 },
+  },
+  {
+    vendorName: 'CasaCraft Home & Kitchen',
+    name: 'Natural Woven Jute & Wool Textured Area Rug (5x7 ft)',
+    description: 'Hand-loomed by master artisans using 60% golden Indian jute and 40% un-dyed New Zealand wool. Features an intricate chevron weave that brings organic warmth, sound dampening, and earthy texture to any living space.',
+    price: 3499,
+    comparePrice: 6299,
+    category: 'Home & Living',
+    subcategory: 'Home Decor',
+    tags: ['rug', 'carpet', 'jute', 'wool', 'handwoven', 'decor'],
+    stock: 24,
+    ratings: { average: 4.7, count: 89 },
+    isFeatured: false,
+    attributes: {
+      Brand: 'HomeElegance Rugs',
+      Weave: 'Hand-Loomed Flatweave',
+      Material: '60% Golden Jute / 40% Pure Wool',
+      Size: '150 x 210 cm (5 x 7 ft)',
+      Backing: 'Natural Non-Slip Latex Backing',
+    },
+    images: [
+      { url: 'https://images.unsplash.com/photo-1600121848594-d8644e57abab?w=800&auto=format&fit=crop&q=80', isPrimary: true },
+      { url: 'https://images.unsplash.com/photo-1582533561751-ef6f6ab93a2e?w=800&auto=format&fit=crop&q=80', isPrimary: false },
+      { url: 'https://images.unsplash.com/photo-1616046229478-9901c5536a45?w=800&auto=format&fit=crop&q=80', isPrimary: false },
+    ],
+    shippingInfo: { isFreeShipping: true, shippingCost: 0, estimatedDays: 2 },
+  },
+  {
+    vendorName: 'CasaCraft Home & Kitchen',
+    name: 'Solid Walnut Desk Organizer with Magnetic Wireless Charger',
+    description: 'Hand-carved from a single block of North American Black Walnut wood. Integrated with an official Qi 15W fast-charging magnetic wireless pad for iPhone and Android devices, dedicated pen slots, and brass stand.',
+    price: 1799,
+    comparePrice: 3299,
+    category: 'Home & Living',
+    subcategory: 'Office & Desk',
+    tags: ['desk organizer', 'walnut', 'wood', 'charger', 'gadget', 'office'],
+    stock: 65,
+    ratings: { average: 4.8, count: 276 },
+    isFeatured: true,
+    attributes: {
+      Brand: 'HomeElegance Studio',
+      Wood: 'Solid Black Walnut (FSC Certified)',
+      WirelessCharger: '15W Fast Charge Qi-Certified',
+      Port: 'USB Type-C (Braided cable included)',
+      Dimensions: '28 x 14 x 2.2 cm',
+    },
+    images: [
+      { url: 'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=800&auto=format&fit=crop&q=80', isPrimary: true },
+      { url: 'https://images.unsplash.com/photo-1518455027359-f3f8164ba6bd?w=800&auto=format&fit=crop&q=80', isPrimary: false },
+      { url: 'https://images.unsplash.com/photo-1585776245991-cf89dd7fc73a?w=800&auto=format&fit=crop&q=80', isPrimary: false },
+    ],
+    shippingInfo: { isFreeShipping: true, shippingCost: 0, estimatedDays: 1 },
   },
 
-  // Sports & Fitness (FitLife)
+  // ──── 4. APPLIANCES (Vendor: HomeElegance) ───────────────────────────────
   {
-    vendorIndex: 3,
-    name: 'Quick-Dial Adjustable Dumbbell 2.5kg to 24kg Pair',
-    description: 'Replace 15 pairs of dumbbells in one compact system. Smooth dial selector allows incremental weight increases from 2.5kg to 24kg per dumbbell with laser-etched knurled steel grip.',
-    price: 14999,
-    comparePrice: 22999,
-    category: 'Sports & Fitness',
-    subcategory: 'Strength Equipment',
-    tags: ['dumbbells', 'fitness', 'homegym', 'weights', 'strength'],
-    images: [
-      { url: 'https://images.unsplash.com/photo-1584735935682-2f2b69dff9d2?w=800&fit=crop&q=80', isPrimary: true },
-    ],
-    stock: 35,
-    sku: 'FL-DB-ADJ-24KG',
-    weight: 50000,
+    vendorName: 'CasaCraft Home & Kitchen',
+    name: 'Smart Multi-Function Digital Air Fryer with Touch Display (5.5L)',
+    description: 'Crisp and cook with up to 85% less oil using Rapid 360-degree Air Circulation technology. Features 10 one-touch preset cooking menus, tempered glass digital touch screen, dishwasher-safe non-stick basket, and automatic shutoff.',
+    price: 4499,
+    comparePrice: 7999,
+    category: 'Kitchen & Appliances',
+    subcategory: 'Small Appliances',
+    tags: ['air fryer', 'kitchen', 'appliances', 'cooking', 'healthy'],
+    stock: 55,
+    ratings: { average: 4.7, count: 512 },
     isFeatured: true,
-    attributes: { weightRange: '2.5kg - 24kg each', count: 'Pair (2 units)', warranty: '2 Years' },
-    shippingInfo: { isFreeShipping: true, estimatedDays: 5 },
+    attributes: {
+      Brand: 'AeroChef Pro',
+      Capacity: '5.5 Litres (Serves 4-6)',
+      Power: '1700 Watts High Speed',
+      TemperatureRange: '80°C - 200°C',
+      Coating: 'PFOA-Free Ceramic Nonstick',
+      Warranty: '2 Years Doorstep Replacement',
+    },
+    images: [
+      { url: 'https://images.unsplash.com/photo-1585515320310-259814833e62?w=800&auto=format&fit=crop&q=80', isPrimary: true },
+      { url: 'https://images.unsplash.com/photo-1556911220-e15b29be8c8f?w=800&auto=format&fit=crop&q=80', isPrimary: false },
+      { url: 'https://images.unsplash.com/photo-1584269600464-37b1b58a9fe7?w=800&auto=format&fit=crop&q=80', isPrimary: false },
+    ],
+    shippingInfo: { isFreeShipping: true, shippingCost: 0, estimatedDays: 1 },
   },
   {
-    vendorIndex: 3,
-    name: 'Eco-Dense Natural Tree Rubber Yoga Mat 5mm Pro',
-    description: 'Zero-slip wet or dry grip. Non-toxic biodegradable natural tree rubber core with moisture-wicking polyurethane top surface. Body alignment alignment laser markings.',
-    price: 2499,
-    comparePrice: 3999,
-    category: 'Sports & Fitness',
-    subcategory: 'Yoga & Pilates',
-    tags: ['yoga', 'yogamat', 'fitness', 'rubber', 'grip'],
-    images: [
-      { url: 'https://images.unsplash.com/photo-1601925260368-ae2f83cf8b7f?w=800&fit=crop&q=80', isPrimary: true },
-    ],
-    stock: 90,
-    sku: 'FL-MAT-RUBBER-5MM',
-    weight: 2600,
+    vendorName: 'CasaCraft Home & Kitchen',
+    name: 'Professional Espresso Coffee Machine with 15-Bar Milk Frother',
+    description: 'Craft barista-quality espresso, silky lattes, and cappuccinos in your home. Powered by a high-pressure 15-bar Italian pump, Thermo-Block rapid heating system, commercial 58mm stainless portafilter, and high-pressure steam wand.',
+    price: 9999,
+    comparePrice: 16999,
+    category: 'Kitchen & Appliances',
+    subcategory: 'Coffee & Tea',
+    tags: ['coffee machine', 'espresso', 'kitchen', 'appliances', 'barista', 'frother'],
+    stock: 20,
+    ratings: { average: 4.8, count: 384 },
     isFeatured: true,
-    attributes: { thickness: '5mm', material: 'Natural Tree Rubber + PU', size: '183cm x 68cm' },
-    shippingInfo: { isFreeShipping: true, estimatedDays: 3 },
+    attributes: {
+      Brand: 'CaffeMaster Classico',
+      Pressure: '15 Bar Italian High Pressure',
+      WaterTank: '1.8L Removable Transparent Tank',
+      Boiler: 'Instant Thermo-Block Stainless Steel',
+      Accessories: 'Single & Double Shot Portafilters, Tamper, Milk Pitcher',
+      Warranty: '2 Years Manufacturer',
+    },
+    images: [
+      { url: 'https://images.unsplash.com/photo-1517668808822-9ebb02ae2a0e?w=800&auto=format&fit=crop&q=80', isPrimary: true },
+      { url: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=800&auto=format&fit=crop&q=80', isPrimary: false },
+      { url: 'https://images.unsplash.com/photo-1534432182912-63863115e106?w=800&auto=format&fit=crop&q=80', isPrimary: false },
+    ],
+    shippingInfo: { isFreeShipping: true, shippingCost: 0, estimatedDays: 1 },
   },
   {
-    vendorIndex: 3,
-    name: 'GPS Smart Multisport Fitness Watch 50m Waterproof',
-    description: 'Built-in multi-constellation GPS, wrist-based heart rate, pulse oximeter, VO2 max estimation, 40+ sport profiles, offline music storage, and 12-day battery stamina.',
-    price: 5499,
-    comparePrice: 8999,
-    category: 'Sports & Fitness',
-    subcategory: 'Wearables',
-    tags: ['smartwatch', 'gps', 'running', 'fitness-tracker', 'waterproof'],
-    images: [
-      { url: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800&fit=crop&q=80', isPrimary: true },
-    ],
-    stock: 50,
-    sku: 'FL-WATCH-GPS-50M',
+    vendorName: 'CasaCraft Home & Kitchen',
+    name: 'Heavy-Duty Enameled Cast Iron Dutch Oven Pot (5.2 Qt)',
+    description: 'Superior heat distribution and retention for braising, baking artisan sourdough bread, slow-stewing, and roasting. Vibrant chip-resistant enamel coating requires no seasoning. Heavy snug-fitting lid with condensation bumps.',
+    price: 3299,
+    comparePrice: 5999,
+    category: 'Kitchen & Appliances',
+    subcategory: 'Cookware',
+    tags: ['dutch oven', 'cast iron', 'cookware', 'kitchen', 'pot', 'baking'],
+    stock: 38,
+    ratings: { average: 4.9, count: 190 },
     isFeatured: false,
-    attributes: { waterResistance: '50 Meters (5 ATM)', battery: '12 Days', display: 'AMOLED 1.4"' },
-    shippingInfo: { isFreeShipping: true, estimatedDays: 2 },
-  },
-  {
-    vendorIndex: 3,
-    name: 'Pro Grade Deep-Tissue Percussion Massage Gun',
-    description: 'Brushless high-torque motor delivering 14mm amplitude up to 3200 percussions per minute. Ultra-quiet QuietForce engineering, 6 swappable heads, 6-hour lithium battery.',
-    price: 3999,
-    comparePrice: 6999,
-    category: 'Sports & Fitness',
-    subcategory: 'Recovery Gear',
-    tags: ['massage-gun', 'recovery', 'muscle-relief', 'fitness'],
+    attributes: {
+      Brand: 'Heritage Cookware',
+      Capacity: '5.2 Litres (5.5 Quarts)',
+      Material: 'Enameled Heavy Cast Iron',
+      Color: 'Fiery Cherry Red',
+      OvenSafe: 'Safe up to 260°C (500°F)',
+      Compatibility: 'Induction, Gas, Electric, Glass, Ceramic',
+    },
     images: [
-      { url: 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?w=800&fit=crop&q=80', isPrimary: true },
+      { url: 'https://images.unsplash.com/photo-1584990347449-3995874de30e?w=800&auto=format&fit=crop&q=80', isPrimary: true },
+      { url: 'https://images.unsplash.com/photo-1583778176476-4a8b02a64c01?w=800&auto=format&fit=crop&q=80', isPrimary: false },
+      { url: 'https://images.unsplash.com/photo-1590794056226-79ef3a8147e1?w=800&auto=format&fit=crop&q=80', isPrimary: false },
     ],
-    stock: 75,
-    sku: 'FL-MGUN-BRUSHLESS',
-    isFeatured: false,
-    attributes: { speeds: '5 Levels', amplitude: '14mm', noiseLevel: '<45dB' },
-    shippingInfo: { isFreeShipping: true, estimatedDays: 3 },
-  },
-
-  // Food & Gourmet (GourmetKart)
-  {
-    vendorIndex: 4,
-    name: 'Single-Estate Darjeeling First Flush Rare Tea Hamper',
-    description: 'Spring harvest hand-plucked from Makaibari estate at 5,000 ft altitude. Muscatel fragrance with delicate champagne notes. Packed in handcrafted cedar keepsake box with infuser.',
-    price: 1899,
-    comparePrice: 2999,
-    category: 'Food & Gourmet',
-    subcategory: 'Tea & Coffee',
-    tags: ['tea', 'darjeeling', 'organic', 'gourmet', 'gift-box'],
-    images: [
-      { url: 'https://images.unsplash.com/photo-1576092768241-dec231879fc3?w=800&fit=crop&q=80', isPrimary: true },
-    ],
-    stock: 120,
-    sku: 'GK-TEA-DARJ-FF',
-    isFeatured: true,
-    attributes: { harvest: 'First Flush', estate: 'Makaibari', weight: '250g Tin' },
-    shippingInfo: { isFreeShipping: true, estimatedDays: 3 },
+    shippingInfo: { isFreeShipping: true, shippingCost: 0, estimatedDays: 2 },
   },
   {
-    vendorIndex: 4,
-    name: 'Cold-Pressed Extra Virgin Spanish Olive Oil (1 Litre)',
-    description: 'Harvested from single-origin Arbequina olives in Jaén, Andalusia within 4 hours of picking. Unfiltered, cold-extracted under 22°C. Low acidity <0.2%.',
-    price: 1299,
-    comparePrice: 1899,
-    category: 'Food & Gourmet',
-    subcategory: 'Oils & Vinegars',
-    tags: ['olive-oil', 'extra-virgin', 'cold-pressed', 'spanish', 'organic'],
-    images: [
-      { url: 'https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=800&fit=crop&q=80', isPrimary: true },
-    ],
-    stock: 200,
-    sku: 'GK-EVOO-ESP-1L',
-    isFeatured: false,
-    attributes: { variety: '100% Arbequina', acidity: '<0.2%', volume: '1 Litre Dark Glass' },
-    shippingInfo: { isFreeShipping: true, estimatedDays: 3 },
-  },
-  {
-    vendorIndex: 4,
-    name: 'Artisanal Single-Origin Dark Chocolate 85% Confection Box',
-    description: 'Bean-to-bar microbatch chocolate crafted from Madagascan Criollo cacao beans. Roasted low and slow with organic unrefined cane sugar. Notes of red berries and toasted espresso.',
-    price: 1499,
-    comparePrice: 2200,
-    category: 'Food & Gourmet',
-    subcategory: 'Chocolates',
-    tags: ['chocolate', 'dark-chocolate', 'bean-to-bar', 'artisan', 'vegan'],
-    images: [
-      { url: 'https://images.unsplash.com/photo-1549007994-cb92caebd54b?w=800&fit=crop&q=80', isPrimary: true },
-    ],
-    stock: 80,
-    sku: 'GK-CHOC-MADAG-85',
-    isFeatured: false,
-    attributes: { cocoaPercentage: '85%', origin: 'Sambirano Valley, Madagascar', netWeight: '240g' },
-    shippingInfo: { isFreeShipping: true, estimatedDays: 2 },
-  },
-  {
-    vendorIndex: 4,
-    name: 'Pure Himalayan Kashmiri Mogra Saffron (2 Grams)',
-    description: 'Highest Grade 1 Super Negin / Mogra saffron threads cultivated in the highlands of Pampore, Kashmir. Laboratory verified Crocin index exceeding 260. Distinctive sweet floral aroma.',
-    price: 999,
-    comparePrice: 1599,
-    category: 'Food & Gourmet',
-    subcategory: 'Spices',
-    tags: ['saffron', 'kashmiri', 'spices', 'organic', 'grade-1'],
-    images: [
-      { url: 'https://images.unsplash.com/photo-1509358271058-acd22cc93898?w=800&fit=crop&q=80', isPrimary: true },
-    ],
-    stock: 95,
-    sku: 'GK-SAFFRON-KASH-2G',
-    isFeatured: true,
-    attributes: { grade: 'Grade 1 Mogra', origin: 'Pampore, Kashmir', weight: '2 Grams' },
-    shippingInfo: { isFreeShipping: true, estimatedDays: 2 },
-  },
-
-  // Beauty & Personal Care (BeautyBloom)
-  {
-    vendorIndex: 5,
-    name: '20% Pure Vitamin C + Ferulic Acid Advanced Radiant Serum',
-    description: 'Clinical grade antioxidant cocktail combining stabilized L-Ascorbic Acid 20%, Ferulic Acid 0.5%, and Vitamin E. Diminishes hyperpigmentation, protects against pollution, restores luminous glow.',
-    price: 1299,
-    comparePrice: 1999,
-    category: 'Beauty & Personal Care',
-    subcategory: 'Skincare',
-    tags: ['serum', 'vitamin-c', 'skincare', 'brightening', 'anti-aging'],
-    images: [
-      { url: 'https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=800&fit=crop&q=80', isPrimary: true },
-    ],
-    stock: 300,
-    sku: 'BB-SERUM-VITC-30ML',
-    isFeatured: true,
-    attributes: { volume: '30ml / 1 fl oz', skinType: 'All Skin Types', formula: 'Cruelty-Free, Fragrance-Free' },
-    shippingInfo: { isFreeShipping: true, estimatedDays: 3 },
-  },
-  {
-    vendorIndex: 5,
-    name: 'Moroccan Cold-Pressed Pure Argan Oil Hair Therapy Elixir',
-    description: 'Liquid gold for distressed tresses. 100% pure organic virgin Argan oil cold-pressed in Morocco. Tames unruly frizz, restores hydration, provides heat defense up to 230°C.',
-    price: 1499,
-    comparePrice: 2499,
-    category: 'Beauty & Personal Care',
-    subcategory: 'Hair Care',
-    tags: ['argan-oil', 'hair-serum', 'moroccan', 'organic', 'haircare'],
-    images: [
-      { url: 'https://images.unsplash.com/photo-1608248597359-22a84a7376a9?w=800&fit=crop&q=80', isPrimary: true },
-    ],
-    stock: 180,
-    sku: 'BB-ARGAN-ELIXIR-100',
-    isFeatured: true,
-    attributes: { volume: '100ml', origin: 'Essaouira, Morocco', certification: 'ECOCERT Organic' },
-    shippingInfo: { isFreeShipping: true, estimatedDays: 3 },
-  },
-  {
-    vendorIndex: 5,
-    name: 'Sultans Amber & Royal Agarwood (Oud) Eau De Parfum 100ml',
-    description: 'Opulent unisex oriental perfume opening with Bulgarian damask rose and saffron, unfolding into smoky Cambodian agarwood, Madagascar vanilla, and golden resinous amber.',
+    vendorName: 'CasaCraft Home & Kitchen',
+    name: '1200W High-Speed Precision Blender for Smoothies & Ice Crushing',
+    description: 'Crush whole fruits, tough seeds, leafy greens, and rock-hard ice in seconds. Features an ultra-powerful 1200-watt pure copper motor, 6 aircraft-grade laser-cut titanium blades, and two BPA-free Tritan travel cups with sip lids.',
     price: 2999,
     comparePrice: 4999,
-    category: 'Beauty & Personal Care',
-    subcategory: 'Fragrances',
-    tags: ['perfume', 'oud', 'amber', 'fragrance', 'luxury-scent'],
-    images: [
-      { url: 'https://images.unsplash.com/photo-1592945403244-b3fbafd7f539?w=800&fit=crop&q=80', isPrimary: true },
-    ],
-    stock: 85,
-    sku: 'BB-EDP-OUD-100ML',
-    isFeatured: true,
-    attributes: { concentration: 'Eau De Parfum (25% Oil)', longevity: '14+ Hours', volume: '100ml' },
-    shippingInfo: { isFreeShipping: true, estimatedDays: 2 },
-  },
-  {
-    vendorIndex: 5,
-    name: 'Multi-Molecular Hyaluronic Acid Ultra Hydrating Dew Gel',
-    description: 'Infused with 5 molecular weights of Hyaluronic Acid, Centella Asiatica, and Ceramides. Delivers 72-hour moisture saturation deep into the dermal matrix without greasy residue.',
-    price: 899,
-    comparePrice: 1399,
-    category: 'Beauty & Personal Care',
-    subcategory: 'Skincare',
-    tags: ['hyaluronic-acid', 'moisturizer', 'hydrating', 'dewy', 'gel'],
-    images: [
-      { url: 'https://images.unsplash.com/photo-1556228720-195a672e8a03?w=800&fit=crop&q=80', isPrimary: true },
-    ],
-    stock: 220,
-    sku: 'BB-GEL-HYAL-50G',
+    category: 'Kitchen & Appliances',
+    subcategory: 'Small Appliances',
+    tags: ['blender', 'smoothie', 'kitchen', 'appliances', 'ice crusher'],
+    stock: 44,
+    ratings: { average: 4.6, count: 228 },
     isFeatured: false,
-    attributes: { weight: '50g', keyIngredients: '5D Hyaluronic Acid + Ceramides NP', finish: 'Dewy' },
-    shippingInfo: { isFreeShipping: true, estimatedDays: 3 },
+    attributes: {
+      Brand: 'Vortex NutriBlend',
+      Power: '1200 Watts Peak Power',
+      Speed: '24,000 RPM',
+      Jars: '1.8L Family Pitcher + 700ml Travel Cup with Sip Lid',
+      BladeMaterial: 'Laser-Cut Hardened Titanium Steel',
+      Warranty: '2 Years Motor Warranty',
+    },
+    images: [
+      { url: 'https://images.unsplash.com/photo-1570222094114-d054a817e56b?w=800&auto=format&fit=crop&q=80', isPrimary: true },
+      { url: 'https://images.unsplash.com/photo-1574269909862-7e1d70bb8078?w=800&auto=format&fit=crop&q=80', isPrimary: false },
+      { url: 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=800&auto=format&fit=crop&q=80', isPrimary: false },
+    ],
+    shippingInfo: { isFreeShipping: true, shippingCost: 0, estimatedDays: 1 },
   },
 ];
 
-// ─── Coupons Data ─────────────────────────────────────────────────────────────
-const couponsData = [
-  { code: 'WELCOME20', type: 'percentage', value: 20, minOrderAmount: 500, maxDiscount: 500, description: 'Welcome offer - 20% off your first purchase' },
-  { code: 'FLAT200', type: 'fixed', value: 200, minOrderAmount: 1000, description: 'Flat ₹200 off on cart value above ₹1,000' },
-  { code: 'TECH10', type: 'percentage', value: 10, minOrderAmount: 5000, maxDiscount: 2500, applicableCategories: ['Electronics'], description: '10% off top electronics' },
-  { code: 'FASHION25', type: 'percentage', value: 25, minOrderAmount: 1500, maxDiscount: 1000, applicableCategories: ['Fashion'], description: '25% seasonal fashion discount' },
-  { code: 'SUMMERFEST', type: 'percentage', value: 15, minOrderAmount: 2000, maxDiscount: 1500, description: '15% summer storewide discount' },
-];
-
-// ─── Review Templates ─────────────────────────────────────────────────────────
-const reviewTemplates = [
-  { rating: 5, title: 'Incredible quality and lightning delivery!', body: 'Far exceeded my expectations. Build quality is flawless and arrived within 24 hours.' },
-  { rating: 5, title: 'Best purchase I have made this year', body: 'Genuine product verified directly with the manufacturer. Absolutely 10/10 recommend!' },
-  { rating: 4, title: 'Solid product with great value', body: 'Performance has been rock solid over 2 weeks of heavy usage. Packaging was secure.' },
-  { rating: 5, title: 'Unbeatable experience from this vendor', body: 'Premium packaging and unboxing experience. Customer support was also very helpful.' },
-  { rating: 4, title: 'Worth every rupee', body: 'Very happy with the overall finish and performance. Will definitely order again.' },
-];
-
-async function seed() {
-  console.log('🌱 Starting MarketNest Seed Script...');
-
+/**
+ * Clean Database Seeder:
+ * - Admin: admin@marketnest.com / admin123
+ * - Customer: buyer@marketnest.com / buyer123
+ * - Vendors: TechNova, StyleHub, HomeElegance
+ * - 16 Products across Electronics, Fashion, Home & Kitchen, Appliances
+ */
+async function seedDatabase() {
   try {
-    const conn = await mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 5000 });
-    console.log(`✅ Connected to MongoDB at: ${conn.connection.host}:${conn.connection.port}`);
-  } catch (err) {
-    console.error(`❌ Could not connect to MongoDB: ${err.message}`);
-    console.log('💡 Note: Start MongoDB (or run `docker compose up -d`) and re-run `npm run seed` to populate the database.');
-    process.exit(0);
-  }
-
-  try {
-    console.log('🧹 Purging existing collections...');
-    await Promise.all([
-      User.deleteMany({}),
-      VendorProfile.deleteMany({}),
-      Product.deleteMany({}),
-      Cart.deleteMany({}),
-      Order.deleteMany({}),
-      SubOrder.deleteMany({}),
-      PaymentSplit.deleteMany({}),
-      Review.deleteMany({}),
-      Coupon.deleteMany({}),
-    ]);
-    console.log('✅ Collections purged.');
-
-    // 1. Create Admin
-    const adminUser = await User.create({
-      name: 'System Admin',
-      email: 'admin@marketplace.com',
-      password: 'Admin@123456',
-      role: 'admin',
-      isEmailVerified: true,
-      phone: '+91 98765 00000',
-    });
-    console.log('👑 Admin user created: admin@marketplace.com');
-
-    // 2. Create Vendors
-    const vendorUsers = [];
-    const vendorProfiles = [];
-
-    for (const v of vendorsData) {
-      const u = await User.create({
-        name: v.name,
-        email: v.email,
-        password: 'Vendor@123456',
-        role: 'vendor',
-        isEmailVerified: true,
-        phone: '+91 98765 43210',
-      });
-
-      const vp = await VendorProfile.create({
-        userId: u._id,
-        storeName: v.storeName,
-        storeDescription: v.storeDescription,
-        category: v.category,
-        logo: v.logo,
-        banner: v.banner,
-        commissionRate: v.commissionRate,
-        rating: v.rating,
-        totalSales: v.totalSales,
-        gstNumber: v.gstNumber,
-        isApproved: true,
-        approvedAt: new Date(),
-        payoutSchedule: 'weekly',
-        bankDetails: {
-          accountHolderName: v.name,
-          accountNumber: '918237465019',
-          ifscCode: 'HDFC0001234',
-          bankName: 'HDFC Bank Ltd',
-        },
-      });
-
-      vendorUsers.push(u);
-      vendorProfiles.push(vp);
+    const existingData = await Promise.all(
+      Object.values(require('./models')).map((model) => model.exists({}))
+    );
+    if (existingData.some(Boolean)) {
+      console.log('Database already contains application data; sample seeding was skipped.');
+      return false;
     }
-    console.log(`🏪 ${vendorUsers.length} Vendors created.`);
 
-    // 3. Create Customers
-    const customerNames = [
-      'Aarav Sharma', 'Priya Patel', 'Rohan Mehta', 'Ananya Singh', 'Vikram Nair',
-      'Deepika Reddy', 'Arjun Kumar', 'Pooja Gupta', 'Rahul Verma', 'Sneha Joshi',
-      'Karan Malhotra', 'Ishita Banerjee', 'Siddharth Rao', 'Divya Menon', 'Aditya Shah',
-      'Riya Kapoor', 'Nikhil Desai', 'Kavya Nambiar', 'Amit Pandey', 'Meera Iyer'
-    ];
+    // 2. Ensure Admin always exists (admin@marketnest.com / admin123)
+    let admin = await User.findOne({ email: 'admin@marketnest.com' });
+    if (!admin) {
+      admin = await User.create({
+        name: 'MarketNest Admin',
+        email: 'admin@marketnest.com',
+        password: 'admin123',
+        role: 'admin',
+        isEmailVerified: true,
+        phone: '+91 98765 00000',
+        authProvider: 'local',
+      });
+      console.log('👑 Admin created: admin@marketnest.com / admin123');
+    } else if (admin.role !== 'admin') {
+      admin.role = 'admin';
+      await admin.save({ validateBeforeSave: false });
+      console.log('👑 Admin role confirmed for admin@marketnest.com');
+    }
 
-    const customerUsers = [];
-    for (const cName of customerNames) {
-      const email = `${cName.toLowerCase().replace(' ', '.')}@gmail.com`;
-      const cust = await User.create({
-        name: cName,
-        email,
-        password: 'Customer@123456',
+    // 3. Ensure Test Customer exists (buyer@marketnest.com / buyer123)
+    let buyer = await User.findOne({ email: 'buyer@marketnest.com' });
+    if (!buyer) {
+      buyer = await User.create({
+        name: 'Rahul Sharma',
+        email: 'buyer@marketnest.com',
+        password: 'buyer123',
         role: 'customer',
         isEmailVerified: true,
-        phone: '+91 99887 76655',
-        addresses: [{
-          label: 'Home',
-          street: '402, Skyline Towers, Linking Road',
-          city: 'Mumbai',
-          state: 'Maharashtra',
-          pincode: '400050',
-          country: 'India',
-          isDefault: true,
-        }],
+        phone: '+91 98765 12345',
+        authProvider: 'local',
+        addresses: [
+          {
+            label: 'Home',
+            fullName: 'Rahul Sharma',
+            street: '402, Lotus Grandeur, Connaught Place',
+            city: 'New Delhi',
+            state: 'Delhi',
+            pincode: '110001',
+            country: 'India',
+            isDefault: true,
+          },
+        ],
       });
-      customerUsers.push(cust);
+      console.log('🛒 Buyer created: buyer@marketnest.com / buyer123');
     }
-    console.log(`🛒 ${customerUsers.length} Customers created.`);
 
-    // 4. Create Products
+    // 4. Ensure 3 Default Vendors Exist (TechNova Electronics, UrbanThread Fashion, CasaCraft Home & Kitchen)
+    const vendorMap = {};
+    for (let vendorIndex = 0; vendorIndex < vendorsData.length; vendorIndex++) {
+      const v = vendorsData[vendorIndex];
+      let vendorUser = await User.findOne({ email: v.email });
+      if (!vendorUser) {
+        vendorUser = await User.create({
+          name: v.name,
+          email: v.email,
+          password: v.password,
+          role: 'vendor',
+          isEmailVerified: true,
+          phone: `+91 98765 9999${vendorIndex}`,
+          authProvider: 'local',
+        });
+      } else {
+        vendorUser.name = v.name;
+        vendorUser.role = 'vendor';
+        await vendorUser.save({ validateBeforeSave: false });
+      }
+
+      let vendorProfile = await VendorProfile.findOne({ userId: vendorUser._id });
+      if (!vendorProfile) {
+        vendorProfile = await VendorProfile.create({
+          userId: vendorUser._id,
+          storeName: v.storeName,
+          storeSlug: v.storeName.toLowerCase().replace(/[^a-z0-9]/g, '-'),
+          storeDescription: v.storeDescription,
+          category: v.category,
+          logo: v.logo,
+          banner: v.banner,
+          commissionRate: v.commissionRate,
+          rating: v.rating,
+          totalSales: v.totalSales,
+          isApproved: true,
+        });
+      } else {
+        vendorProfile.storeName = v.storeName;
+        vendorProfile.storeDescription = v.storeDescription;
+        vendorProfile.logo = v.logo;
+        vendorProfile.banner = v.banner;
+        vendorProfile.rating = v.rating;
+        vendorProfile.isApproved = true;
+        await vendorProfile.save({ validateBeforeSave: false });
+      }
+
+      vendorMap[v.name] = { user: vendorUser, profile: vendorProfile };
+      console.log(`🏪 Vendor verified: ${v.storeName}`);
+    }
+
+    // 5. Check if catalog needs seeding
+    console.log('🌱 Force-seeding MarketNest multi-vendor database catalog...');
+
+    // 5. Create 16 Products across 4 Categories
     const createdProducts = [];
-    for (const p of productsData) {
-      const vendorUser = vendorUsers[p.vendorIndex];
-      const vendorProf = vendorProfiles[p.vendorIndex];
+    for (let i = 0; i < productsData.length; i++) {
+      const p = productsData[i];
+      const vendorInfo = vendorMap[p.vendorName] || Object.values(vendorMap)[0];
+      const category = await Category.findOrCreateByName(p.category);
 
+      const sku = `MN-${p.category.replace(/[^a-zA-Z]/g, '').substring(0, 3).toUpperCase()}-${String(i + 1).padStart(4, '0')}`;
+      
       const product = await Product.create({
-        vendorId: vendorUser._id,
-        vendorProfileId: vendorProf._id,
         name: p.name,
         description: p.description,
         price: p.price,
         comparePrice: p.comparePrice,
-        costPrice: Math.round(p.price * 0.65),
         category: p.category,
+        categoryId: category._id,
         subcategory: p.subcategory,
         tags: p.tags,
-        images: p.images,
         stock: p.stock,
-        sku: p.sku,
-        weight: p.weight,
-        isFeatured: p.isFeatured || false,
+        ratings: p.ratings,
+        isFeatured: p.isFeatured,
+        attributes: p.attributes,
+        images: p.images,
         shippingInfo: p.shippingInfo,
-        attributes: p.attributes ? new Map(Object.entries(p.attributes)) : undefined,
+        sku,
+        vendorId: vendorInfo.user._id,
+        vendorProfileId: vendorInfo.profile._id,
+        isActive: true,
       });
 
       createdProducts.push(product);
     }
-    console.log(`📦 ${createdProducts.length} Products created across all categories.`);
+    console.log(`📦 Successfully seeded ${createdProducts.length} real products across 4 categories.`);
 
-    // 5. Create Reviews
-    let reviewCount = 0;
-    for (const prod of createdProducts) {
-      const numReviews = Math.floor(Math.random() * 4) + 2;
-      for (let r = 0; r < numReviews; r++) {
-        const randCust = customerUsers[Math.floor(Math.random() * customerUsers.length)];
-        const template = reviewTemplates[Math.floor(Math.random() * reviewTemplates.length)];
+    return true;
+  } catch (err) {
+    console.error('❌ Error in seedDatabase:', err.message);
+    throw err;
+  }
+}
 
-        try {
-          await Review.create({
-            productId: prod._id,
-            customerId: randCust._id,
-            vendorId: prod.vendorId,
-            rating: template.rating,
-            title: template.title,
-            body: template.body,
-            isVerifiedPurchase: true,
-            helpfulVotes: Math.floor(Math.random() * 15),
-          });
-          reviewCount++;
-        } catch {
-          // Skip unique index collisions
-        }
-      }
-    }
-    console.log(`⭐ ${reviewCount} Reviews created.`);
-
-    // 6. Create Coupons
-    for (const c of couponsData) {
-      await Coupon.create({
-        ...c,
-        createdBy: adminUser._id,
-      });
-    }
-    console.log(`🎟️ ${couponsData.length} Coupons created.`);
-
-    // 7. Create Sample Orders & Payment Splits
-    for (let i = 0; i < 6; i++) {
-      const cust = customerUsers[i];
-      const p1 = createdProducts[i * 2];
-      const p2 = createdProducts[i * 2 + 1];
-
-      const items = [
-        { productId: p1._id, vendorId: p1.vendorId, name: p1.name, image: p1.images[0]?.url, price: p1.price, quantity: 1, subtotal: p1.price },
-        { productId: p2._id, vendorId: p2.vendorId, name: p2.name, image: p2.images[0]?.url, price: p2.price, quantity: 1, subtotal: p2.price },
-      ];
-      const totalAmount = p1.price + p2.price;
-
-      const order = await Order.create({
-        customerId: cust._id,
-        items,
-        shippingAddress: cust.addresses[0],
-        totalAmount,
-        subtotal: totalAmount,
-        paymentStatus: 'paid',
-        paymentMethod: i % 2 === 0 ? 'razorpay' : 'stripe',
-      });
-
-      // Group suborders by vendor
-      for (const item of items) {
-        const vendorProf = vendorProfiles.find(vp => vp.userId.toString() === item.vendorId.toString());
-        const commRate = vendorProf?.commissionRate || 10;
-        const commAmount = parseFloat(((item.subtotal * commRate) / 100).toFixed(2));
-        const netPayout = parseFloat((item.subtotal - commAmount).toFixed(2));
-
-        const subOrder = await SubOrder.create({
-          orderId: order._id,
-          vendorId: item.vendorId,
-          customerId: cust._id,
-          items: [item],
-          subtotal: item.subtotal,
-          commissionRate: commRate,
-          commissionAmount: commAmount,
-          vendorPayout: netPayout,
-          status: ['placed', 'packed', 'shipped', 'delivered'][i % 4],
-          trackingNumber: `TRK-IN-${Date.now()}-${i}`,
-        });
-
-        await PaymentSplit.create({
-          orderId: order._id,
-          subOrderId: subOrder._id,
-          vendorId: item.vendorId,
-          grossAmount: item.subtotal,
-          commissionRate: commRate,
-          commissionAmount: commAmount,
-          netPayout,
-          paymentGateway: order.paymentMethod,
-          payoutStatus: subOrder.status === 'delivered' ? 'paid' : 'pending',
-        });
-      }
-    }
-    console.log('💳 Sample Orders and Payment Splits populated.');
-
-    console.log('\n=======================================================');
-    console.log('🎉 SEED SCRIPT COMPLETED SUCCESSFULLY!');
-    console.log('Credentials:');
-    console.log('👑 Admin:    admin@marketplace.com / Admin@123456');
-    console.log('🏪 Vendor:   technova@marketplace.com / Vendor@123456');
-    console.log('🛒 Customer: aarav.sharma@gmail.com / Customer@123456');
-    console.log('=======================================================\n');
-
+async function runStandalone() {
+  console.log('🌱 Starting Standalone MarketNest Seeder...');
+  try {
+    await connectDB();
+    await seedDatabase();
     await mongoose.disconnect();
+    console.log('✅ Seeding finished successfully.');
     process.exit(0);
   } catch (err) {
-    console.error('❌ Error during seeding:', err);
+    console.error('❌ Standalone seeding failed:', err.message);
     process.exit(1);
   }
 }
 
-seed();
+if (require.main === module) {
+  runStandalone();
+}
+
+module.exports = { seedDatabase };

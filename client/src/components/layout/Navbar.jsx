@@ -8,76 +8,74 @@ import {
   X, 
   ChevronDown, 
   User, 
-  Heart, 
   Store, 
   Shield, 
   LogOut, 
   Package, 
-  PlusCircle,
-  Settings, 
-  Check,
-  MapPin,
+  MapPin, 
+  ShoppingBag,
   Sparkles,
-  ArrowRight,
-  TrendingUp,
-  Tag,
-  Zap,
-  HelpCircle
+  ArrowRight
 } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { useAuth } from '../../context/AuthContext';
+import api from '../../services/api';
 
 const searchCategories = [
-  'All Categories',
+  'All',
   'Electronics',
   'Fashion',
   'Home & Living',
-  'Sports & Fitness',
-  'Beauty & Personal Care',
-  'Food & Gourmet',
+  'Kitchen & Appliances',
 ];
 
-const roles = [
-  { id: 'customer', label: 'Buyer View', desc: 'Browse catalog, cart & orders', icon: User, color: 'text-sky-400' },
-  { id: 'vendor', label: 'Merchant Portal', desc: 'Manage products & store', icon: Store, color: 'text-amber-400' },
-  { id: 'admin', label: 'Platform Admin', desc: 'Platform supervision & KYC', icon: Shield, color: 'text-purple-400' },
-];
+const DEFAULT_DELIVERY_LOCATION = {
+  pincode: '110001',
+  district: 'Central Delhi',
+  state: 'Delhi',
+};
 
 export default function Navbar() {
   const { 
     cartCount, 
     cartTotal,
-    setCartOpen, 
     selectedCategory, 
     setSelectedCategory, 
     searchQuery, 
     setSearchQuery, 
-    wishlist,
-    showToast 
+    clearCart
   } = useStore();
-  const { user, isAuthenticated, activeRole, logout, switchActiveRole, demoLogin } = useAuth();
+  const { user, isAuthenticated, logout } = useAuth();
   const navigate = useNavigate();
 
   const [searchFocused, setSearchFocused] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [roleDropdown, setRoleDropdown] = useState(false);
   const [userDropdown, setUserDropdown] = useState(false);
-  const [navCategory, setNavCategory] = useState(selectedCategory === 'All' ? 'All Categories' : selectedCategory);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [selectedCat, setSelectedCat] = useState('All');
+  const [deliveryLocation, setDeliveryLocation] = useState(() => {
+    try {
+      const savedLocation = localStorage.getItem('marketnest_delivery_location');
+      return savedLocation
+        ? { ...DEFAULT_DELIVERY_LOCATION, ...JSON.parse(savedLocation) }
+        : DEFAULT_DELIVERY_LOCATION;
+    } catch {
+      return DEFAULT_DELIVERY_LOCATION;
+    }
+  });
+  const [locationPin, setLocationPin] = useState(deliveryLocation.pincode);
+  const [locationDialogOpen, setLocationDialogOpen] = useState(false);
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [locationError, setLocationError] = useState('');
 
   const searchInputRef = useRef(null);
-  const roleMenuRef = useRef(null);
   const userMenuRef = useRef(null);
 
-  // Sync category dropdown with store's selectedCategory
+  // Sync internal category with store
   useEffect(() => {
-    if (selectedCategory === 'All') {
-      setNavCategory('All Categories');
-    } else {
-      setNavCategory(selectedCategory);
-    }
+    setSelectedCat(selectedCategory || 'All');
   }, [selectedCategory]);
 
-  // Keyboard shortcut ⌘K or / to focus search
+  // Keyboard shortcut (⌘K or /) to focus search
   useEffect(() => {
     const handleKeyDown = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
@@ -92,13 +90,10 @@ export default function Navbar() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Close dropdowns on outside click
+  // Close dropdown on click outside
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (roleMenuRef.current && !roleMenuRef.current.contains(event.target)) {
-        setRoleDropdown(false);
-      }
-      if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
+    const handleClickOutside = (e) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) {
         setUserDropdown(false);
       }
     };
@@ -106,257 +101,221 @@ export default function Navbar() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const currentRole = roles.find(r => r.id === (activeRole || user?.role || 'customer')) || roles[0];
-
-  const handleRoleSelect = (roleId) => {
-    switchActiveRole(roleId);
-    setRoleDropdown(false);
-    showToast?.(`Active perspective: ${roleId === 'vendor' ? 'Merchant' : roleId === 'admin' ? 'Admin' : 'Buyer'}`, 'info');
-    if (roleId === 'vendor') {
-      navigate('/vendor/dashboard');
-    } else if (roleId === 'admin') {
-      navigate('/admin/dashboard');
-    } else if (roleId === 'customer') {
-      navigate('/');
-    }
-  };
-
-  const handleCategorySelect = (cat) => {
-    setNavCategory(cat);
-    const mapped = cat === 'All Categories' ? 'All' : cat;
-    setSelectedCategory(mapped);
-    const catalogEl = document.getElementById('catalog-grid');
-    if (catalogEl) {
-      catalogEl.scrollIntoView({ behavior: 'smooth' });
-    }
-  };
-
   const handleSearchSubmit = (e) => {
     e?.preventDefault();
-    const mapped = navCategory === 'All Categories' ? 'All' : navCategory;
-    setSelectedCategory(mapped);
+    setSelectedCategory(selectedCat);
     const catalogEl = document.getElementById('catalog-grid');
-    if (catalogEl) {
-      catalogEl.scrollIntoView({ behavior: 'smooth' });
+    if (catalogEl) catalogEl.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const handleCategoryNavClick = (cat) => {
+    setSelectedCat(cat);
+    setSelectedCategory(cat);
+    const catalogEl = document.getElementById('catalog-grid');
+    if (catalogEl) catalogEl.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const openLocationDialog = () => {
+    setLocationPin(deliveryLocation.pincode);
+    setLocationError('');
+    setLocationDialogOpen(true);
+  };
+
+  const handleLocationSubmit = async (e) => {
+    e.preventDefault();
+    const pincode = locationPin.trim();
+    if (!/^\d{6}$/.test(pincode)) {
+      setLocationError('Enter a valid 6-digit Indian PIN code.');
+      return;
+    }
+
+    setLocationLoading(true);
+    setLocationError('');
+    try {
+      const response = await api.get(`/location/pincode/${pincode}`);
+      if (!response.data?.success || !response.data.data) {
+        setLocationError(response.data?.message || 'Could not verify this PIN code.');
+        return;
+      }
+
+      const nextLocation = response.data.data;
+      localStorage.setItem('marketnest_delivery_location', JSON.stringify(nextLocation));
+      setDeliveryLocation(nextLocation);
+      setLocationDialogOpen(false);
+    } catch (error) {
+      setLocationError(error.response?.data?.message || 'Could not verify this PIN code. Please try again.');
+    } finally {
+      setLocationLoading(false);
     }
   };
 
   const handleLogout = async () => {
     setUserDropdown(false);
+    clearCart?.();
     await logout();
-    showToast?.('Signed out successfully.', 'info');
     navigate('/');
   };
 
-  const handleQuickDemoLogin = async (roleType) => {
-    try {
-      setUserDropdown(false);
-      await demoLogin(roleType);
-      showToast?.(`Logged in as demo ${roleType}!`, 'success');
-      if (roleType === 'vendor') navigate('/vendor/dashboard');
-      if (roleType === 'admin') navigate('/admin/dashboard');
-    } catch {
-      showToast?.('Demo login failed', 'error');
-    }
-  };
-
-  const scrollToSection = (id) => {
-    const el = document.getElementById(id);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth' });
-    }
-  };
+  const isVendor = user?.role === 'vendor';
+  const isAdmin = user?.role === 'admin';
 
   return (
-    <header className="sticky top-0 z-50 w-full font-sans select-none shadow-md">
-      {/* 1. PRIMARY AMAZON-STYLE TOP BAR */}
-      <div className="bg-[#131921] text-white border-b border-slate-800">
-        <div className="max-w-[1536px] mx-auto px-3 sm:px-4 lg:px-6">
-          <div className="flex items-center justify-between h-16 gap-2 sm:gap-4">
+    <header className="market-glass-header sticky top-0 z-50 w-full font-sans select-none shadow-sm">
+      {/* ─── 1. MODERN ENTERPRISE PRIMARY TOP BAR (Deep Slate 900) ─────────── */}
+      <div className="market-glass-topbar bg-slate-900 text-white border-b border-slate-800">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16 gap-3 sm:gap-6">
             
-            {/* Left: Brand Logo & Deliver-To Location */}
+            {/* Left: Modern Brand Logo + Delivery Location */}
             <div className="flex items-center gap-3 sm:gap-5 flex-shrink-0">
-              {/* Brand Logo */}
+              {/* Brand Logo with Electric Indigo Dot */}
               <Link
                 to="/"
                 onClick={() => { setSelectedCategory('All'); setSearchQuery(''); }}
-                className="flex items-center gap-2 group py-1 px-1 rounded-sm hover:ring-1 hover:ring-white transition-all"
+                className="flex items-center gap-2.5 group transition-transform duration-200 active:scale-95"
               >
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-amber-500 via-amber-400 to-amber-300 flex items-center justify-center text-slate-950 font-black shadow-xs group-hover:scale-105 transition-transform">
-                  <Store size={18} strokeWidth={2.5} />
+                <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-md shadow-indigo-600/30 group-hover:bg-indigo-500 transition-colors">
+                  <ShoppingBag size={18} strokeWidth={2.5} />
                 </div>
-                <div className="flex flex-col">
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-xl font-extrabold tracking-tight text-white group-hover:text-amber-400 transition-colors">
-                      MarketNest
-                    </span>
-                    <span className="text-[10px] font-bold text-amber-400">
-                      .direct
-                    </span>
-                  </div>
-                  <span className="text-[9px] text-slate-400 tracking-wider uppercase -mt-1 hidden sm:block">
-                    Multi-Vendor Prime
+                <div className="flex items-center">
+                  <span className="mn-brand-title text-xl font-black tracking-tight text-white group-hover:text-indigo-200 transition-colors">
+                    MarketNest
                   </span>
+                  <span className="w-2 h-2 rounded-full bg-indigo-500 ml-1.5 animate-pulse" />
                 </div>
               </Link>
 
-              {/* Deliver To Location Pill */}
-              <div 
-                className="hidden lg:flex items-center gap-1.5 py-1.5 px-2 rounded-sm hover:ring-1 hover:ring-white cursor-pointer transition-all"
-                title="Delivery location"
+              {/* Modern Deliver To Pill */}
+              <button
+                type="button"
+                onClick={openLocationDialog}
+                className="hidden xl:flex items-center gap-2 py-1.5 px-3 rounded-xl bg-slate-800/80 border border-slate-700/60 text-slate-300 text-xs hover:border-slate-500 transition cursor-pointer text-left"
+                title="Change delivery PIN code"
               >
-                <MapPin size={16} className="text-amber-400 flex-shrink-0" />
+                <MapPin size={15} className="text-indigo-400 flex-shrink-0" />
                 <div className="flex flex-col leading-tight">
-                  <span className="text-[11px] text-slate-400 font-normal">Deliver to</span>
-                  <span className="text-xs font-bold text-white tracking-wide">India 110001</span>
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Deliver to</span>
+                  <span className="text-xs font-bold text-slate-100 truncate max-w-[150px]">
+                    {deliveryLocation.district}, {deliveryLocation.state} {deliveryLocation.pincode}
+                  </span>
                 </div>
-              </div>
+              </button>
             </div>
 
-            {/* Center: Comprehensive Search Bar with Category Select & Vibrant Button */}
+            {/* Center: Modern Rounded-XL Search Bar */}
             <form 
               onSubmit={handleSearchSubmit}
-              className="flex-1 max-w-3xl hidden md:flex items-center mx-2"
+              className="flex-1 max-w-2xl hidden md:flex items-center mx-2"
             >
               <div
-                className={`flex w-full rounded-lg overflow-hidden bg-white transition-all duration-150 ${
+                className={`flex w-full items-center bg-slate-800/90 rounded-xl border transition-all duration-200 ${
                   searchFocused
-                    ? 'ring-2 ring-amber-400 shadow-lg'
-                    : 'hover:ring-1 hover:ring-amber-400/50'
+                    ? 'border-indigo-500 ring-2 ring-indigo-500/20 bg-slate-800 shadow-sm'
+                    : 'border-slate-700 hover:border-slate-600'
                 }`}
               >
-                {/* Category Dropdown Selector */}
-                <div className="relative flex items-center bg-slate-100 hover:bg-slate-200 border-r border-slate-300 transition-colors">
+                {/* Category Dropdown */}
+                <div className="relative flex items-center border-r border-slate-700/80">
                   <select
-                    value={navCategory}
-                    onChange={(e) => handleCategorySelect(e.target.value)}
-                    className="appearance-none bg-transparent py-2.5 pl-3 pr-7 text-xs font-semibold text-slate-800 outline-none cursor-pointer"
+                    value={selectedCat}
+                    onChange={(e) => {
+                      setSelectedCat(e.target.value);
+                      setSelectedCategory(e.target.value);
+                    }}
+                    className="appearance-none bg-transparent py-2 pl-3 pr-7 text-xs font-semibold text-slate-300 outline-none cursor-pointer hover:text-white"
                   >
                     {searchCategories.map((cat) => (
-                      <option key={cat} value={cat} className="bg-white text-slate-900 font-normal">
-                        {cat}
+                      <option key={cat} value={cat} className="bg-slate-900 text-slate-100">
+                        {cat === 'All' ? 'All Categories' : cat}
                       </option>
                     ))}
                   </select>
-                  <ChevronDown size={13} className="absolute right-2 text-slate-500 pointer-events-none" />
+                  <ChevronDown size={12} className="absolute right-2 text-slate-400 pointer-events-none" />
                 </div>
 
-                {/* Main Search Input */}
+                {/* Main Search Text Input */}
                 <div className="flex-1 relative flex items-center">
                   <input
                     ref={searchInputRef}
                     type="text"
-                    placeholder="Search MarketNest, brand products, verified makers..."
+                    placeholder="Search over 10,000+ verified products..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     onFocus={() => setSearchFocused(true)}
                     onBlur={() => setSearchFocused(false)}
-                    className="w-full py-2.5 px-3 text-xs text-slate-900 placeholder-slate-400 outline-none"
+                    className="w-full py-2 px-3 text-sm text-slate-100 placeholder-slate-400 outline-none bg-transparent"
                   />
 
-                  {/* Clear Query Button */}
                   {searchQuery && (
                     <button
                       type="button"
                       onClick={() => setSearchQuery('')}
-                      className="p-1 mr-1 text-slate-400 hover:text-slate-700 cursor-pointer"
+                      className="p-1 mr-1 text-slate-400 hover:text-slate-200 cursor-pointer"
                     >
                       <X size={14} />
                     </button>
                   )}
-
-                  {/* Keyboard Shortcut Badge */}
-                  {!searchQuery && (
-                    <div className="mr-2 hidden lg:flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-mono text-slate-400 bg-slate-100 rounded border border-slate-200">
-                      <span>⌘K</span>
-                    </div>
-                  )}
                 </div>
 
-                {/* Vibrant Search Action Button */}
+                {/* Electric Indigo Search Action Button */}
                 <button
                   type="submit"
-                  className="bg-amber-400 hover:bg-amber-500 active:bg-amber-600 text-slate-950 px-4 sm:px-5 flex items-center justify-center transition-colors cursor-pointer"
-                  title="Search products"
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg px-4 py-1.5 mx-1.5 flex items-center justify-center transition-all shadow-sm font-semibold cursor-pointer active:scale-95"
+                  title="Search MarketNest"
                 >
-                  <Search size={18} strokeWidth={2.5} />
+                  <Search size={16} strokeWidth={2.5} />
                 </button>
               </div>
             </form>
 
-            {/* Right: Role Perspective Pill, Account, Orders & Cart */}
-            <div className="flex items-center gap-1 sm:gap-2 lg:gap-3 flex-shrink-0">
+            {/* Right Side: Role Shortcuts, User Dropdown, Orders, Cart */}
+            <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
 
-              {/* Role Perspective Dropdown */}
-              <div className="relative" ref={roleMenuRef}>
-                <button
-                  onClick={() => setRoleDropdown(!roleDropdown)}
-                  className="hidden sm:flex items-center gap-1.5 py-1.5 px-2.5 rounded-sm hover:ring-1 hover:ring-white transition-all text-left cursor-pointer"
+              {/* Role-Based Shortcut: Become a Seller */}
+              {!isVendor && (
+                <Link
+                  to="/vendor/register"
+                  className="hidden lg:flex items-center gap-1.5 py-1.5 px-3 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-slate-200 border border-slate-700/60 text-xs font-semibold transition"
                 >
-                  <currentRole.icon size={15} className={currentRole.color} />
-                  <div className="flex flex-col leading-tight">
-                    <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Perspective</span>
-                    <span className="text-xs font-bold text-white flex items-center gap-1">
-                      {currentRole.label.replace(' View', '').replace(' Platform', '')}
-                      <ChevronDown size={11} className={`text-slate-400 transition-transform ${roleDropdown ? 'rotate-180' : ''}`} />
-                    </span>
-                  </div>
-                </button>
+                  <Store size={14} className="text-indigo-400" />
+                  <span>Become a Seller</span>
+                </Link>
+              )}
 
-                <AnimatePresence>
-                  {roleDropdown && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: 6 }}
-                      transition={{ duration: 0.12 }}
-                      className="absolute right-0 top-full mt-2 w-64 bg-white rounded-xl shadow-2xl border border-slate-200 p-2 z-50 text-slate-900"
-                    >
-                      <div className="px-3 py-1.5 border-b border-slate-100 mb-1">
-                        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Switch Marketplace Role</p>
-                      </div>
+              {/* Role-Based Shortcut: Vendor Console */}
+              {isVendor && (
+                <Link
+                  to="/vendor/dashboard"
+                  className="hidden lg:flex items-center gap-1.5 py-1.5 px-3 rounded-xl bg-indigo-950/60 text-indigo-300 border border-indigo-800/60 hover:bg-indigo-900/60 text-xs font-semibold transition"
+                >
+                  <Store size={14} />
+                  <span>Vendor Console</span>
+                </Link>
+              )}
 
-                      {roles.map((r) => {
-                        const Icon = r.icon;
-                        const isSelected = (activeRole || user?.role || 'customer') === r.id;
-                        return (
-                          <button
-                            key={r.id}
-                            onClick={() => handleRoleSelect(r.id)}
-                            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium text-left transition-colors cursor-pointer ${
-                              isSelected ? 'bg-amber-50 text-amber-900 border border-amber-200' : 'text-slate-700 hover:bg-slate-50'
-                            }`}
-                          >
-                            <div className="flex items-center gap-2.5">
-                              <div className={`w-7 h-7 rounded-md flex items-center justify-center ${isSelected ? 'bg-amber-500 text-slate-950 font-bold' : 'bg-slate-100 text-slate-600'}`}>
-                                <Icon size={14} />
-                              </div>
-                              <div>
-                                <p className="font-bold">{r.label}</p>
-                                <p className="text-[10px] text-slate-500">{r.desc}</p>
-                              </div>
-                            </div>
-                            {isSelected && <Check size={14} className="text-amber-600 font-bold" />}
-                          </button>
-                        );
-                      })}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
+              {/* Role-Based Shortcut: Admin Center */}
+              {isAdmin && (
+                <Link
+                  to="/admin/dashboard"
+                  className="hidden lg:flex items-center gap-1.5 py-1.5 px-3 rounded-xl bg-purple-950/60 text-purple-300 border border-purple-800/60 hover:bg-purple-900/60 text-xs font-semibold transition"
+                >
+                  <Shield size={14} />
+                  <span>Admin Center</span>
+                </Link>
+              )}
 
-              {/* Account & Lists Menu */}
+              {/* Accounts & Lists Dropdown */}
               <div className="relative" ref={userMenuRef}>
                 <button
                   onClick={() => setUserDropdown(!userDropdown)}
-                  className="flex items-center gap-1.5 py-1.5 px-2 rounded-sm hover:ring-1 hover:ring-white transition-all text-left cursor-pointer"
+                  className="flex items-center gap-1.5 py-1.5 px-3 rounded-xl hover:bg-slate-800 border border-transparent hover:border-slate-700/60 transition text-left cursor-pointer"
                 >
                   <div className="flex flex-col leading-tight">
-                    <span className="text-[11px] text-slate-400 font-normal">
-                      {isAuthenticated && user ? `Hello, ${user.name.split(' ')[0]}` : 'Hello, Sign in'}
+                    <span className="text-[10px] text-slate-400 font-medium">
+                      {isAuthenticated && user ? `Hi, ${user.name.split(' ')[0]}` : 'Welcome'}
                     </span>
-                    <span className="text-xs font-bold text-white flex items-center gap-1">
-                      Account & Lists
+                    <span className="text-xs font-bold text-slate-100 flex items-center gap-1">
+                      {isAuthenticated ? 'Account' : 'Sign In'}
                       <ChevronDown size={11} className={`text-slate-400 transition-transform ${userDropdown ? 'rotate-180' : ''}`} />
                     </span>
                   </div>
@@ -365,328 +324,249 @@ export default function Navbar() {
                 <AnimatePresence>
                   {userDropdown && (
                     <motion.div
-                      initial={{ opacity: 0, y: 6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: 6 }}
-                      transition={{ duration: 0.12 }}
-                      className="absolute right-0 top-full mt-2 w-72 bg-white rounded-xl shadow-2xl border border-slate-200 p-2 z-50 text-slate-900"
+                      initial={{ opacity: 0, y: 6, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 4, scale: 0.98 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute right-0 top-full mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-200 p-3.5 z-50 text-slate-900"
                     >
                       {isAuthenticated && user ? (
-                        <>
-                          {/* User Header */}
-                          <div className="px-3 py-2.5 bg-slate-50 rounded-lg border border-slate-100 mb-2">
-                            <div className="flex items-center gap-2.5">
-                              <img
-                                src={user.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user.name)}`}
-                                alt={user.name}
-                                className="w-8 h-8 rounded-full border border-slate-200 object-cover"
-                              />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-xs font-bold text-slate-900 truncate">{user.name}</p>
-                                <p className="text-[11px] text-slate-500 truncate">{user.email}</p>
-                              </div>
-                            </div>
-                            <div className="mt-2 flex items-center justify-between">
-                              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-100 text-amber-800">
-                                {user.role || activeRole || 'Buyer'}
-                              </span>
-                              {user.vendorId && (
-                                <span className="text-[10px] text-slate-500 font-mono">
-                                  ID: {user.vendorId.slice(-6)}
+                        /* Logged-In Menu */
+                        <div className="space-y-2">
+                          <div className="pb-2.5 border-b border-slate-100">
+                            <p className="text-xs font-bold text-slate-900">{user.name}</p>
+                            <p className="text-[11px] text-slate-500 truncate">{user.email}</p>
+                            <div className="mt-1.5 flex items-center gap-1.5">
+                              {user.role === 'admin' ? (
+                                <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-purple-100 text-purple-800 border border-purple-200">
+                                  Administrator
+                                </span>
+                              ) : user.role === 'vendor' ? (
+                                <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-indigo-100 text-indigo-800 border border-indigo-200">
+                                  Verified Seller
+                                </span>
+                              ) : (
+                                <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                  Customer
                                 </span>
                               )}
                             </div>
                           </div>
 
-                          {/* Authenticated Links */}
-                          <div className="space-y-0.5 text-xs">
-                            <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                              Your Account
-                            </p>
-                            <Link
-                              to="/"
-                              onClick={() => setUserDropdown(false)}
-                              className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-700 hover:bg-slate-100 font-medium"
-                            >
-                              <Sparkles size={14} className="text-amber-500" />
-                              <span>Explore Marketplace</span>
-                            </Link>
-
+                          <div className="space-y-1 text-xs">
                             <Link
                               to="/orders"
                               onClick={() => setUserDropdown(false)}
-                              className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-700 hover:bg-slate-100 font-medium"
+                              className="flex items-center gap-2.5 p-2 rounded-xl hover:bg-slate-50 text-slate-700 font-semibold transition"
                             >
-                              <Package size={14} className="text-indigo-600" />
-                              <span>Your Orders & Deliveries</span>
+                              <Package size={14} className="text-slate-500" />
+                              <span>My Orders & Invoices</span>
                             </Link>
 
-                            {(user.role === 'vendor' || activeRole === 'vendor' || user.role === 'admin') && (
-                              <>
-                                <p className="px-2 pt-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                                  Merchant Controls
-                                </p>
-                                <Link
-                                  to="/vendor/dashboard"
-                                  onClick={() => setUserDropdown(false)}
-                                  className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-700 hover:bg-slate-100 font-medium"
-                                >
-                                  <Store size={14} className="text-indigo-600" />
-                                  <span>Merchant Dashboard</span>
-                                </Link>
-                                <Link
-                                  to="/vendor/products"
-                                  onClick={() => setUserDropdown(false)}
-                                  className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-700 hover:bg-slate-100 font-medium"
-                                >
-                                  <Package size={14} className="text-slate-500" />
-                                  <span>Inventory & Products</span>
-                                </Link>
-                                <Link
-                                  to="/vendor/products/new"
-                                  onClick={() => setUserDropdown(false)}
-                                  className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-700 hover:bg-slate-100 font-medium"
-                                >
-                                  <PlusCircle size={14} className="text-slate-500" />
-                                  <span>Add New Product</span>
-                                </Link>
-                              </>
+                            {isVendor && (
+                              <Link
+                                to="/vendor/dashboard"
+                                onClick={() => setUserDropdown(false)}
+                                className="flex items-center gap-2.5 p-2 rounded-xl hover:bg-indigo-50 text-indigo-700 font-semibold transition"
+                              >
+                                <Store size={14} />
+                                <span>Vendor Dashboard</span>
+                              </Link>
                             )}
 
-                            {(user.role === 'admin' || activeRole === 'admin') && (
-                              <>
-                                <p className="px-2 pt-2 py-1 text-[10px] font-bold uppercase tracking-wider text-purple-500">
-                                  Admin Controls
-                                </p>
-                                <Link
-                                  to="/admin/dashboard"
-                                  onClick={() => setUserDropdown(false)}
-                                  className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-700 hover:bg-slate-100 font-medium"
-                                >
-                                  <Shield size={14} className="text-purple-600" />
-                                  <span>Admin Analytics Center</span>
-                                </Link>
-                              </>
+                            {isAdmin && (
+                              <Link
+                                to="/admin/dashboard"
+                                onClick={() => setUserDropdown(false)}
+                                className="flex items-center gap-2.5 p-2 rounded-xl hover:bg-purple-50 text-purple-700 font-semibold transition"
+                              >
+                                <Shield size={14} />
+                                <span>Admin Management</span>
+                              </Link>
                             )}
 
                             <button
                               onClick={handleLogout}
-                              className="w-full flex items-center gap-2 px-2.5 py-2 mt-2 border-t border-slate-100 rounded-lg text-rose-600 hover:bg-rose-50 font-semibold cursor-pointer"
+                              className="w-full flex items-center gap-2.5 p-2 pt-2.5 border-t border-slate-100 text-rose-600 hover:bg-rose-50 rounded-xl font-semibold cursor-pointer text-left transition"
                             >
                               <LogOut size={14} />
                               <span>Sign Out</span>
                             </button>
                           </div>
-                        </>
+                        </div>
                       ) : (
-                        <>
-                          {/* Unauthenticated Quick Login Menu */}
-                          <div className="p-3 text-center border-b border-slate-100">
+                        /* Logged-Out Sign In Card */
+                        <div className="space-y-3">
+                          <Link
+                            to="/login"
+                            onClick={() => setUserDropdown(false)}
+                            className="block w-full text-center py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-md shadow-indigo-600/20 transition cursor-pointer"
+                          >
+                            Sign In to Account
+                          </Link>
+                          <p className="text-[11px] text-slate-500 text-center">
+                            New customer?{' '}
                             <Link
-                              to="/login"
+                              to="/register"
                               onClick={() => setUserDropdown(false)}
-                              className="w-full block py-2 px-4 rounded-lg bg-amber-400 hover:bg-amber-500 text-slate-950 font-bold text-xs shadow-xs transition-colors"
+                              className="text-indigo-600 hover:underline font-bold"
                             >
-                              Sign In
+                              Start here.
                             </Link>
-                            <p className="text-[11px] text-slate-500 mt-2">
-                              New customer?{' '}
-                              <Link
-                                to="/register"
-                                onClick={() => setUserDropdown(false)}
-                                className="text-indigo-600 hover:underline font-semibold"
-                              >
-                                Start here.
-                              </Link>
-                            </p>
+                          </p>
+                          <div className="pt-2 border-t border-slate-100 text-center">
+                            <Link
+                              to="/admin/login"
+                              onClick={() => setUserDropdown(false)}
+                              className="text-[11px] font-semibold text-slate-400 hover:text-indigo-600 transition"
+                            >
+                              Admin Portal Login &rarr;
+                            </Link>
                           </div>
-
-                          {/* 1-Click Quick Demo Switchers */}
-                          <div className="p-2 space-y-1">
-                            <p className="px-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                              Instant 1-Click Demo Login
-                            </p>
-                            <button
-                              onClick={() => handleQuickDemoLogin('customer')}
-                              className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-50 border border-slate-200/80 cursor-pointer"
-                            >
-                              <span className="flex items-center gap-2">
-                                <User size={13} className="text-sky-500" /> Customer Demo
-                              </span>
-                              <span className="text-[10px] text-slate-400">Buyer</span>
-                            </button>
-                            <button
-                              onClick={() => handleQuickDemoLogin('vendor')}
-                              className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-50 border border-slate-200/80 cursor-pointer"
-                            >
-                              <span className="flex items-center gap-2">
-                                <Store size={13} className="text-amber-500" /> Vendor Demo
-                              </span>
-                              <span className="text-[10px] text-slate-400">Seller</span>
-                            </button>
-                            <button
-                              onClick={() => handleQuickDemoLogin('admin')}
-                              className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-50 border border-slate-200/80 cursor-pointer"
-                            >
-                              <span className="flex items-center gap-2">
-                                <Shield size={13} className="text-purple-500" /> Admin Demo
-                              </span>
-                              <span className="text-[10px] text-slate-400">Admin</span>
-                            </button>
-                          </div>
-                        </>
+                        </div>
                       )}
                     </motion.div>
                   )}
                 </AnimatePresence>
               </div>
 
-              {/* Returns & Orders */}
+              {/* Returns & Orders -> /orders */}
               <Link
                 to="/orders"
-                className="hidden lg:flex flex-col py-1.5 px-2 rounded-sm hover:ring-1 hover:ring-white transition-all text-left cursor-pointer leading-tight"
-                title="View Orders & Delivery Stepper"
+                className="hidden sm:flex flex-col py-1.5 px-3 rounded-xl hover:bg-slate-800 border border-transparent hover:border-slate-700/60 transition text-left cursor-pointer leading-tight"
+                title="Orders & Tracking"
               >
-                <span className="text-[11px] text-slate-400 font-normal">Returns</span>
-                <span className="text-xs font-bold text-white">& Orders</span>
+                <span className="text-[10px] text-slate-400 font-medium">Track</span>
+                <span className="text-xs font-bold text-slate-100">Orders</span>
               </Link>
 
-              {/* Wishlist / Saved Items */}
-              <button
-                onClick={() => {
-                  showToast?.(`Wishlist has ${wishlist.length} item(s)`, 'info');
-                  scrollToSection('catalog-grid');
-                }}
-                className="hidden xl:flex items-center gap-1.5 py-1.5 px-2 rounded-sm hover:ring-1 hover:ring-white transition-all text-left cursor-pointer"
-                title="View Saved Wishlist"
-              >
-                <div className="relative">
-                  <Heart size={18} className={wishlist.length > 0 ? 'fill-rose-500 text-rose-500' : 'text-slate-300'} />
-                  {wishlist.length > 0 && (
-                    <span className="absolute -top-1 -right-2 text-[9px] font-bold bg-rose-500 text-white rounded-full px-1">
-                      {wishlist.length}
-                    </span>
-                  )}
-                </div>
-                <div className="flex flex-col leading-tight">
-                  <span className="text-[11px] text-slate-400 font-normal">Saved</span>
-                  <span className="text-xs font-bold text-white">& Wishlist</span>
-                </div>
-              </button>
-
-              {/* Amazon-Style Vibrant Cart Pill */}
-              <button
-                onClick={() => setCartOpen(true)}
-                className="flex items-center gap-2 py-1.5 px-2 sm:px-3 rounded-sm hover:ring-1 hover:ring-white transition-all cursor-pointer group"
-                title="Open Shopping Cart"
+              {/* Cart Button with Electric Indigo Pill Badge -> /cart */}
+              <Link
+                to="/cart"
+                className="flex items-center gap-2 py-1.5 px-3 sm:px-3.5 rounded-xl bg-slate-800 hover:bg-slate-700/80 border border-slate-700/70 text-white transition-all cursor-pointer group"
+                title="Shopping Cart"
               >
                 <div className="relative flex items-center">
-                  <ShoppingCart size={24} className="text-white group-hover:text-amber-400 transition-colors" />
-                  <span className="absolute -top-1.5 left-2.5 bg-amber-400 text-slate-950 text-[11px] font-black w-5 h-5 rounded-full flex items-center justify-center border-2 border-[#131921]">
-                    {cartCount > 99 ? '99+' : cartCount}
-                  </span>
+                  <ShoppingCart size={18} className="text-slate-200 group-hover:text-indigo-400 transition-colors" />
                 </div>
-                <div className="hidden sm:flex flex-col leading-tight">
-                  <span className="text-[11px] text-slate-400 font-normal">Cart</span>
-                  <span className="text-xs font-bold text-white">
-                    ₹{cartTotal > 0 ? (cartTotal > 9999 ? `${(cartTotal / 1000).toFixed(1)}k` : cartTotal.toLocaleString('en-IN')) : '0.00'}
-                  </span>
-                </div>
-              </button>
+                <span className="bg-indigo-600 text-white px-2 py-0.5 rounded-full text-xs font-semibold shadow-xs">
+                  {cartCount > 99 ? '99+' : cartCount}
+                </span>
+                <span className="hidden sm:inline text-xs font-bold text-slate-200">
+                  ₹{cartTotal > 0 ? (cartTotal > 9999 ? `${(cartTotal / 1000).toFixed(1)}k` : cartTotal.toLocaleString('en-IN')) : '0'}
+                </span>
+              </Link>
 
-              {/* Mobile Search & Menu Toggle */}
+              {/* Mobile Menu Toggle */}
               <button
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                className="md:hidden p-2 text-white hover:text-amber-400"
+                className="md:hidden p-1.5 text-slate-300 hover:text-white"
               >
                 {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
               </button>
             </div>
+
+          </div>
+
+          {/* Mobile Search Bar Row */}
+          <div className="pb-3 md:hidden">
+            <form onSubmit={handleSearchSubmit} className="flex rounded-xl overflow-hidden bg-slate-800 border border-slate-700">
+              <input
+                type="text"
+                placeholder="Search products..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="flex-1 py-2 px-3 text-xs text-slate-100 placeholder-slate-400 outline-none bg-transparent"
+              />
+              <button type="submit" className="bg-indigo-600 px-3.5 text-white">
+                <Search size={15} />
+              </button>
+            </form>
           </div>
         </div>
       </div>
 
-      {/* 2. SECONDARY SUB-NAV BAR (Amazon-Style Dark Horizontal Strip) */}
-      <div className="bg-[#232f3e] text-white text-xs border-b border-slate-700/60 overflow-x-auto scrollbar-none">
-        <div className="max-w-[1536px] mx-auto px-3 sm:px-4 lg:px-6">
-          <div className="flex items-center justify-between h-10 gap-4 min-w-max">
+      {/* ─── 2. SUB-NAV BAR (Charcoal Slate Strip) ─────────────────────────── */}
+      <div className="market-glass-categorybar bg-slate-900/95 backdrop-blur-sm text-slate-300 text-xs border-b border-slate-800/80 overflow-x-auto scrollbar-none">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-10 gap-2 sm:gap-4 min-w-max">
             
-            {/* Left Nav Strip Links */}
-            <div className="flex items-center gap-1 sm:gap-2">
-              {/* All Categories trigger */}
+            {/* Category Pills with Smooth Hover */}
+            <div className="flex items-center gap-1.5 sm:gap-2">
               <button
-                onClick={() => {
-                  setSelectedCategory('All');
-                  scrollToSection('catalog-section');
-                }}
-                className="flex items-center gap-1.5 font-bold text-white py-1.5 px-2.5 rounded-sm hover:ring-1 hover:ring-white transition-all cursor-pointer"
+                type="button"
+                onClick={openLocationDialog}
+                className="xl:hidden inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-indigo-500 hover:bg-slate-800"
+                title="Change delivery PIN code"
               >
-                <Menu size={16} />
+                <MapPin size={13} className="text-indigo-400" />
+                <span>Deliver to {deliveryLocation.pincode}</span>
+              </button>
+              <button
+                onClick={() => handleCategoryNavClick('All')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                  (selectedCategory || 'All') === 'All' 
+                    ? 'bg-indigo-600 text-white shadow-xs' 
+                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                <Menu size={14} />
                 <span>All Categories</span>
               </button>
 
               <button
-                onClick={() => {
-                  setSelectedCategory('Electronics');
-                  scrollToSection('catalog-grid');
-                }}
-                className="py-1.5 px-2.5 rounded-sm hover:ring-1 hover:ring-white text-slate-200 hover:text-white transition-all cursor-pointer font-medium"
+                onClick={() => handleCategoryNavClick('Electronics')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer ${
+                  selectedCategory === 'Electronics' 
+                    ? 'bg-indigo-600 text-white font-semibold' 
+                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                }`}
               >
-                Best Sellers
+                Electronics
               </button>
 
               <button
-                onClick={() => {
-                  scrollToSection('category-feature-cards');
-                }}
-                className="py-1.5 px-2.5 rounded-sm hover:ring-1 hover:ring-white text-amber-300 hover:text-amber-200 transition-all cursor-pointer font-semibold flex items-center gap-1"
+                onClick={() => handleCategoryNavClick('Fashion')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer ${
+                  selectedCategory === 'Fashion' 
+                    ? 'bg-indigo-600 text-white font-semibold' 
+                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                }`}
               >
-                <Tag size={12} className="text-amber-400" />
-                <span>Today's Deals</span>
+                Fashion
               </button>
 
               <button
-                onClick={() => {
-                  scrollToSection('featured-vendors');
-                }}
-                className="py-1.5 px-2.5 rounded-sm hover:ring-1 hover:ring-white text-slate-200 hover:text-white transition-all cursor-pointer font-medium"
+                onClick={() => handleCategoryNavClick('Home & Kitchen')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer ${
+                  selectedCategory === 'Home & Kitchen' 
+                    ? 'bg-indigo-600 text-white font-semibold' 
+                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                }`}
               >
-                Featured Stores
+                Home & Kitchen
               </button>
 
               <button
-                onClick={() => {
-                  setSelectedCategory('Fashion');
-                  scrollToSection('catalog-grid');
-                }}
-                className="py-1.5 px-2.5 rounded-sm hover:ring-1 hover:ring-white text-slate-200 hover:text-white transition-all cursor-pointer font-medium"
+                onClick={() => handleCategoryNavClick('Appliances')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer ${
+                  selectedCategory === 'Appliances' 
+                    ? 'bg-indigo-600 text-white font-semibold' 
+                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                }`}
               >
-                New Releases
-              </button>
-
-              <button
-                onClick={() => {
-                  scrollToSection('escrow-trust');
-                }}
-                className="hidden lg:flex items-center gap-1 py-1.5 px-2.5 rounded-sm hover:ring-1 hover:ring-white text-slate-300 hover:text-white transition-all cursor-pointer font-medium"
-              >
-                <Shield size={12} className="text-emerald-400" />
-                <span>Escrow Guarantee</span>
+                Appliances
               </button>
             </div>
 
-            {/* Right Standout Pill: Sell on MarketNest / Merchant Portal */}
-            <div className="flex items-center gap-2">
+            {/* Right-Aligned Button: Become a Vendor / Sell on MarketNest */}
+            <div className="flex items-center pl-2">
               <Link
-                to={isAuthenticated && (user?.role === 'vendor' || activeRole === 'vendor') ? '/vendor/dashboard' : '/register'}
-                onClick={() => {
-                  if (isAuthenticated) switchActiveRole('vendor');
-                }}
-                className="flex items-center gap-1.5 py-1 px-3 rounded-md bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-bold text-xs shadow-xs hover:shadow transition-all cursor-pointer"
+                to="/vendor/register"
+                className="inline-flex items-center gap-1.5 py-1.5 px-3.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white font-semibold text-xs transition-colors border border-indigo-500/30"
               >
-                <Store size={13} className="text-slate-950" />
-                <span>Become a Vendor / Sell</span>
-                <ArrowRight size={12} />
+                <Store size={13} />
+                <span>Sell on MarketNest</span>
               </Link>
             </div>
 
@@ -694,80 +574,66 @@ export default function Navbar() {
         </div>
       </div>
 
-      {/* 3. MOBILE SEARCH & DRAWER */}
-      <AnimatePresence>
-        {mobileMenuOpen && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="md:hidden bg-[#131921] border-t border-slate-800 p-4 space-y-3"
+      {locationDialogOpen && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm"
+          onClick={() => setLocationDialogOpen(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delivery-location-title"
+            className="w-full max-w-md rounded-2xl bg-white p-5 text-slate-900 shadow-2xl sm:p-6"
+            onClick={(event) => event.stopPropagation()}
           >
-            {/* Mobile Search Bar */}
-            <form onSubmit={handleSearchSubmit} className="flex rounded-lg overflow-hidden bg-white">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 id="delivery-location-title" className="text-lg font-bold">Set delivery location</h2>
+                <p className="mt-1 text-sm text-slate-500">Enter your 6-digit PIN code to find your delivery area.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLocationDialogOpen(false)}
+                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                aria-label="Close location dialog"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleLocationSubmit} className="mt-5 space-y-3">
+              <label htmlFor="delivery-pincode" className="block text-xs font-semibold text-slate-700">
+                Indian PIN code
+              </label>
               <input
-                type="text"
-                placeholder="Search products, brands..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="flex-1 py-2 px-3 text-xs text-slate-900 outline-none"
+                id="delivery-pincode"
+                inputMode="numeric"
+                autoComplete="postal-code"
+                maxLength={6}
+                value={locationPin}
+                onChange={(event) => {
+                  setLocationPin(event.target.value.replace(/\D/g, '').slice(0, 6));
+                  setLocationError('');
+                }}
+                placeholder="e.g. 110001"
+                className="w-full rounded-xl border border-slate-300 px-3.5 py-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
               />
-              <button type="submit" className="bg-amber-400 text-slate-950 px-3">
-                <Search size={16} />
+              {locationError && <p className="text-xs font-medium text-rose-600">{locationError}</p>}
+              <button
+                type="submit"
+                disabled={locationLoading || locationPin.length !== 6}
+                className="w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {locationLoading ? 'Checking PIN code...' : 'Save delivery location'}
               </button>
             </form>
 
-            {/* Role switchers on mobile */}
-            <div className="flex items-center justify-between pt-2 border-t border-slate-800 text-xs">
-              <span className="text-slate-400">Perspective:</span>
-              <div className="flex gap-1">
-                {roles.map(r => (
-                  <button
-                    key={r.id}
-                    onClick={() => { handleRoleSelect(r.id); setMobileMenuOpen(false); }}
-                    className={`px-2 py-1 rounded text-[10px] font-bold ${
-                      (activeRole || user?.role || 'customer') === r.id
-                        ? 'bg-amber-400 text-slate-950'
-                        : 'bg-slate-800 text-slate-300'
-                    }`}
-                  >
-                    {r.label.split(' ')[0]}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Quick links */}
-            <div className="grid grid-cols-2 gap-2 text-xs pt-2">
-              <button 
-                onClick={() => { setSelectedCategory('All'); setMobileMenuOpen(false); }} 
-                className="text-left py-1.5 text-slate-200"
-              >
-                All Products
-              </button>
-              <button 
-                onClick={() => { setSelectedCategory('Electronics'); setMobileMenuOpen(false); }} 
-                className="text-left py-1.5 text-slate-200"
-              >
-                Electronics Deals
-              </button>
-              <button 
-                onClick={() => { setSelectedCategory('Fashion'); setMobileMenuOpen(false); }} 
-                className="text-left py-1.5 text-slate-200"
-              >
-                Fashion Drops
-              </button>
-              <Link 
-                to="/vendor/dashboard" 
-                onClick={() => setMobileMenuOpen(false)} 
-                className="text-amber-400 font-semibold py-1.5"
-              >
-                Merchant Portal
-              </Link>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            <p className="mt-3 text-[11px] text-slate-500">
+              Current area: {deliveryLocation.district}, {deliveryLocation.state} ({deliveryLocation.pincode})
+            </p>
+          </div>
+        </div>
+      )}
     </header>
   );
 }

@@ -16,11 +16,17 @@ const validateLogin = [
 
 // Product validators
 const validateProduct = [
-  body('name').trim().notEmpty().withMessage('Product name is required').isLength({ max: 200 }),
+  body().custom((value) => {
+    if (!value || typeof value !== 'object') return false;
+    const name = value.name || value.title;
+    return typeof name === 'string' && name.trim().length > 0 && name.trim().length <= 200;
+  }).withMessage('Product name is required and must be 200 characters or fewer'),
+  body('name').optional().trim().isLength({ max: 200 }),
+  body('title').optional().trim().isLength({ max: 200 }),
   body('description').notEmpty().withMessage('Description is required').isLength({ max: 5000 }),
   body('price').isFloat({ min: 0 }).withMessage('Price must be a positive number'),
   body('category').notEmpty().withMessage('Category is required'),
-  body('stock').isInt({ min: 0 }).withMessage('Stock must be a non-negative integer'),
+  body('stock').optional().isInt({ min: 0 }).withMessage('Stock must be a non-negative integer'),
 ];
 
 // Coupon validators

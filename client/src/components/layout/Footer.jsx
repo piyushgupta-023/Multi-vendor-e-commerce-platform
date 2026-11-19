@@ -2,7 +2,7 @@ import { Zap, ShieldCheck, Truck, Clock, RefreshCw, Mail, ArrowRight } from 'luc
 
 export default function Footer() {
   return (
-    <footer className="bg-slate-950 text-white mt-20 border-t border-slate-900">
+    <footer className="mn-glass-footer bg-slate-950 text-white mt-20 border-t border-slate-900">
       {/* Value Proposition Highlights Banner */}
       <div className="border-b border-slate-900 bg-slate-900/40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

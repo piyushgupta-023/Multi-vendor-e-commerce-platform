@@ -3,6 +3,7 @@ const router = express.Router();
 const productController = require('../controllers/productController');
 const reviewController = require('../controllers/reviewController');
 const { protect, authorizeRoles } = require('../middlewares/authMiddleware');
+const { validateProduct, validate } = require('../utils/validators');
 
 // Public endpoints
 router.get('/search', productController.searchProducts);
@@ -18,7 +19,7 @@ router.post('/:id/reviews', protect, reviewController.createReview);
 router.get('/:id', productController.getProductById);
 
 // Protected endpoints (Vendor and Admin)
-router.post('/', protect, authorizeRoles('vendor', 'admin'), productController.createProduct);
+router.post('/', protect, authorizeRoles('vendor', 'admin'), validateProduct, validate, productController.createProduct);
 router.put('/:id', protect, authorizeRoles('vendor', 'admin'), productController.updateProduct);
 router.delete('/:id', protect, authorizeRoles('vendor', 'admin'), productController.deleteProduct);
 

@@ -29,6 +29,8 @@ const orderSchema = new mongoose.Schema({
   discountAmount: { type: Number, default: 0 },
   taxAmount: { type: Number, default: 0 },
   paymentStatus: { type: String, enum: ['pending', 'paid', 'failed', 'refunded'], default: 'pending' },
+  orderStatus: { type: String, enum: ['placed', 'packed', 'shipped', 'delivered', 'cancelled'], default: 'placed' },
+  deliveredAt: Date,
   paymentMethod: { type: String, enum: ['razorpay', 'stripe', 'cod'], default: 'razorpay' },
   razorpayOrderId: String,
   razorpayPaymentId: String,
@@ -38,16 +40,14 @@ const orderSchema = new mongoose.Schema({
   notes: String,
 }, { timestamps: true });
 
-orderSchema.pre('save', async function(next) {
+orderSchema.pre('save', async function() {
   if (!this.orderNumber) {
     const count = await this.constructor.countDocuments();
     this.orderNumber = `ORD-${Date.now()}-${(count + 1).toString().padStart(4, '0')}`;
   }
-  next();
 });
 
 orderSchema.index({ customerId: 1, createdAt: -1 });
-orderSchema.index({ orderNumber: 1 });
 orderSchema.index({ paymentStatus: 1 });
 
 module.exports = mongoose.model('Order', orderSchema);

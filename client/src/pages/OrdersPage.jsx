@@ -21,6 +21,7 @@ import {
   FileText
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
+import api from '../services/api';
 
 const formatPrice = (price) => `₹${Math.round(price || 0).toLocaleString('en-IN')}`;
 
@@ -46,6 +47,7 @@ const getStageIndex = (status) => {
 export default function OrdersPage() {
   const { orders, showToast } = useStore();
   const [expandedOrders, setExpandedOrders] = useState({});
+  const [trackedSubOrders, setTrackedSubOrders] = useState({});
 
   // Review modal state
   const [reviewModalItem, setReviewModalItem] = useState(null);
@@ -61,31 +63,34 @@ export default function OrdersPage() {
     }));
   };
 
+  const toggleTrack = (subId) => {
+    setTrackedSubOrders(prev => ({
+      ...prev,
+      [subId]: !prev[subId]
+    }));
+  };
+
   const handleDownloadInvoice = async (order) => {
-    showToast?.(`Generating GST Invoice for ${order.orderNumber}...`, 'info');
+    const orderId = order._id || order.orderNumber;
+    showToast?.(`Generating GST Invoice for ${order.orderNumber || orderId}...`, 'info');
     try {
-      const token = localStorage.getItem('token');
-      const orderId = order._id || order.orderNumber;
-      
-      const res = await fetch(`/api/orders/${orderId}/invoice`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      const res = await api.get(`/orders/${orderId}/invoice`, {
+        responseType: 'blob',
       });
 
-      if (res.ok) {
-        const blob = await res.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `Invoice-${order.orderNumber || orderId}.pdf`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-        showToast?.('Invoice downloaded successfully!', 'success');
-        return;
-      }
-    } catch {
-      // Fallback: print view
+      const blob = new Blob([res.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Invoice-${order.orderNumber || orderId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      showToast?.('GST Tax Invoice downloaded successfully!', 'success');
+      return;
+    } catch (err) {
+      console.warn('Backend PDF download error:', err.message);
     }
 
     // Dynamic fallback invoice window if PDFKit is not streaming in browser
@@ -188,23 +193,23 @@ export default function OrdersPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#eaeded] py-8 px-4 sm:px-6 lg:px-8 font-sans">
-      <div className="max-w-[1400px] mx-auto space-y-6">
+    <div className="min-h-screen bg-slate-50 py-8 px-4 sm:px-6 lg:px-8 font-sans">
+      <div className="max-w-7xl mx-auto space-y-6">
         
         {/* Page Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-300">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200">
           <div>
             <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
               Your Orders & Live Delivery Tracker
             </h1>
-            <p className="text-xs sm:text-sm text-slate-600 mt-1">
+            <p className="text-xs sm:text-sm text-slate-500 mt-1">
               Track independent vendor parcels, download GST tax invoices, and review verified purchases
             </p>
           </div>
 
           <Link
             to="/"
-            className="self-start sm:self-auto py-2 px-4 rounded-xl bg-amber-400 hover:bg-amber-500 text-slate-950 font-bold text-xs shadow-2xs transition-colors flex items-center gap-1.5"
+            className="self-start sm:self-auto py-2 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-md shadow-indigo-600/20 transition-all flex items-center gap-1.5"
           >
             <span>Continue Shopping</span>
             <ArrowRight size={13} />
@@ -214,7 +219,7 @@ export default function OrdersPage() {
         {/* Orders List */}
         {orders.length === 0 ? (
           <div className="bg-white rounded-2xl p-12 text-center border border-slate-200 max-w-lg mx-auto space-y-3">
-            <div className="w-16 h-16 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 mx-auto">
+            <div className="w-16 h-16 rounded-2xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600 mx-auto">
               <Package size={32} />
             </div>
             <h3 className="font-bold text-slate-900 text-base">No orders found yet</h3>
@@ -223,7 +228,7 @@ export default function OrdersPage() {
             </p>
             <Link
               to="/"
-              className="inline-block py-2.5 px-5 rounded-xl bg-slate-950 text-white font-bold text-xs hover:bg-slate-800 transition-colors mt-2"
+              className="inline-block py-2.5 px-5 rounded-xl bg-slate-900 text-white font-semibold text-xs hover:bg-indigo-600 transition-colors mt-2"
             >
               Explore Products
             </Link>
@@ -234,6 +239,17 @@ export default function OrdersPage() {
               const orderId = order._id || order.orderNumber;
               const isExpanded = expandedOrders[orderId] ?? true;
               const subOrders = order.subOrders || [];
+              const parcels = subOrders.length > 0 
+                ? subOrders 
+                : [{
+                    _id: order._id,
+                    vendorStoreName: 'MarketNest Fulfillment Partner',
+                    courierPartner: 'MarketNest Prime Express',
+                    trackingNumber: `MN-TRK-${(order.orderNumber || order._id).toString().slice(-6)}`,
+                    status: order.orderStatus || 'placed',
+                    estimatedDelivery: 'In 2-3 business days',
+                    items: order.items || [],
+                  }];
 
               return (
                 <div
@@ -295,11 +311,11 @@ export default function OrdersPage() {
                       {/* Download Invoice Action */}
                       <button
                         onClick={() => handleDownloadInvoice(order)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white hover:bg-slate-200 border border-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer"
-                        title="Download Tax Invoice"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white hover:bg-slate-200 border border-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer shadow-2xs"
+                        title="Download GST Tax Invoice"
                       >
                         <FileText size={14} className="text-indigo-600" />
-                        <span>Invoice</span>
+                        <span>Download GST Tax Invoice</span>
                       </button>
 
                       <button
@@ -315,15 +331,12 @@ export default function OrdersPage() {
                   {/* SubOrders List (Each Vendor Parcel) */}
                   {isExpanded && (
                     <div className="p-4 sm:p-6 divide-y divide-slate-100 space-y-6">
-                      {subOrders.length === 0 ? (
-                        <p className="text-xs text-slate-500 py-2">No sub-order tracking available for this record.</p>
-                      ) : (
-                        subOrders.map((sub, sIdx) => {
-                          const currentStageIdx = getStageIndex(sub.status);
-                          const isDelivered = currentStageIdx === 3;
+                      {parcels.map((sub, sIdx) => {
+                        const currentStageIdx = getStageIndex(sub.status);
+                        const isDelivered = currentStageIdx === 3;
 
-                          return (
-                            <div key={sub._id || sIdx} className="pt-6 first:pt-0 space-y-5">
+                        return (
+                          <div key={sub._id || sIdx} className="pt-6 first:pt-0 space-y-5">
                               
                               {/* Vendor Parcel Header */}
                               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200/70">
@@ -345,11 +358,21 @@ export default function OrdersPage() {
                                 </div>
 
                                 <div className="flex items-center gap-3">
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleTrack(sub._id || sIdx)}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs border border-indigo-200 transition-colors cursor-pointer"
+                                  >
+                                    <Truck size={13} />
+                                    <span>Track Package</span>
+                                    {trackedSubOrders[sub._id || sIdx] ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                                  </button>
+
                                   <div className="text-right">
                                     <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${
                                       isDelivered 
-                                        ? 'bg-emerald-100 text-emerald-800' 
-                                        : 'bg-amber-100 text-amber-800'
+                                        ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' 
+                                        : 'bg-indigo-50 text-indigo-800 border border-indigo-200/60'
                                     }`}>
                                       {sub.status || 'placed'}
                                     </span>
@@ -385,15 +408,15 @@ export default function OrdersPage() {
                                             isCompleted
                                               ? 'bg-emerald-500 text-white shadow-md ring-4 ring-emerald-100'
                                               : isCurrent
-                                              ? 'bg-amber-400 text-slate-950 shadow-md ring-4 ring-amber-100 animate-pulse'
-                                              : 'bg-white text-slate-400 border-2 border-slate-300'
+                                              ? 'bg-indigo-600 text-white shadow-md ring-4 ring-indigo-100 animate-pulse'
+                                              : 'bg-white text-slate-400 border-2 border-slate-200'
                                           }`}
                                         >
                                           {isCompleted ? <Check size={16} strokeWidth={3} /> : stageIdx + 1}
                                         </div>
 
                                         <div className="text-center mt-2">
-                                          <p className={`text-xs font-bold ${isCurrent ? 'text-slate-900' : isCompleted ? 'text-emerald-700' : 'text-slate-400'}`}>
+                                          <p className={`text-xs font-bold ${isCurrent ? 'text-indigo-600' : isCompleted ? 'text-emerald-700' : 'text-slate-400'}`}>
                                             {stage.label}
                                           </p>
                                           <p className="text-[10px] text-slate-500 hidden sm:block max-w-[110px]">
@@ -406,6 +429,53 @@ export default function OrdersPage() {
 
                                 </div>
                               </div>
+
+                              {/* Amazon-Style Expandable Package Tracking Drawer */}
+                              {trackedSubOrders[sub._id || sIdx] && (
+                                <div className="bg-slate-50 rounded-xl p-4 sm:p-5 border border-slate-200/80 space-y-4 animate-fadeIn">
+                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-200">
+                                    <div>
+                                      <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                                        <Truck size={14} className="text-indigo-600" />
+                                        <span>Tracking Details & Milestone History</span>
+                                      </h4>
+                                      <p className="text-[11px] text-slate-500 mt-0.5">
+                                        Carrier: <strong className="text-slate-800">{sub.courierPartner || 'MarketNest Prime Express'}</strong> • Tracking ID: <span className="font-mono text-indigo-600 font-bold">{sub.trackingNumber || 'MN-TRK-789012'}</span>
+                                      </p>
+                                    </div>
+                                    <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-md border border-indigo-200 self-start sm:self-auto">
+                                      Status: {(sub.status || 'placed').toUpperCase()}
+                                    </span>
+                                  </div>
+
+                                  {/* Vertical Milestone Progress */}
+                                  <div className="relative pl-6 space-y-4 border-l-2 border-indigo-300 ml-2 py-1 text-xs">
+                                    <div className="relative">
+                                      <div className="absolute -left-[31px] top-0 w-4 h-4 rounded-full bg-emerald-500 border-2 border-white shadow-xs"></div>
+                                      <p className="font-bold text-slate-900">Order Placed & Payment Authorized</p>
+                                      <p className="text-[11px] text-slate-500">{new Date(order.createdAt).toLocaleString('en-IN')}</p>
+                                    </div>
+
+                                    <div className="relative">
+                                      <div className={`absolute -left-[31px] top-0 w-4 h-4 rounded-full border-2 border-white shadow-xs ${currentStageIdx >= 1 ? 'bg-emerald-500' : 'bg-slate-300'}`}></div>
+                                      <p className={`font-bold ${currentStageIdx >= 1 ? 'text-slate-900' : 'text-slate-400'}`}>Package Packed & Quality Inspected</p>
+                                      <p className="text-[11px] text-slate-500">Verified by {sub.vendorStoreName || 'Seller Hub'}</p>
+                                    </div>
+
+                                    <div className="relative">
+                                      <div className={`absolute -left-[31px] top-0 w-4 h-4 rounded-full border-2 border-white shadow-xs ${currentStageIdx >= 2 ? 'bg-emerald-500' : 'bg-slate-300'}`}></div>
+                                      <p className={`font-bold ${currentStageIdx >= 2 ? 'text-slate-900' : 'text-slate-400'}`}>Shipped & In Transit with Courier</p>
+                                      <p className="text-[11px] text-slate-500">{currentStageIdx >= 2 ? 'In transit to local hub' : 'Awaiting carrier pickup'}</p>
+                                    </div>
+
+                                    <div className="relative">
+                                      <div className={`absolute -left-[31px] top-0 w-4 h-4 rounded-full border-2 border-white shadow-xs ${currentStageIdx >= 3 ? 'bg-emerald-500' : 'bg-slate-300'}`}></div>
+                                      <p className={`font-bold ${currentStageIdx >= 3 ? 'text-slate-900' : 'text-slate-400'}`}>Delivered to Recipient Doorstep</p>
+                                      <p className="text-[11px] text-slate-500">{currentStageIdx >= 3 ? 'Successfully delivered & confirmed' : `Estimated by ${sub.estimatedDelivery || 'in 2-3 business days'}`}</p>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
 
                               {/* Items in this SubOrder with Review Trigger */}
                               <div className="bg-white rounded-xl border border-slate-100 divide-y divide-slate-100">
@@ -428,9 +498,9 @@ export default function OrdersPage() {
                                     <div className="flex items-center gap-3 self-end sm:self-center">
                                       <button
                                         onClick={() => handleOpenReview(item, order._id)}
-                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 font-bold text-xs border border-amber-200 transition-colors cursor-pointer"
+                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold text-xs border border-indigo-200/60 transition-colors cursor-pointer"
                                       >
-                                        <Star size={12} className="fill-amber-500 text-amber-500" />
+                                        <Star size={12} className="fill-indigo-600 text-indigo-600" />
                                         <span>Write Review</span>
                                       </button>
 
@@ -444,8 +514,7 @@ export default function OrdersPage() {
 
                             </div>
                           );
-                        })
-                      )}
+                        })}
                     </div>
                   )}
 
@@ -509,7 +578,7 @@ export default function OrdersPage() {
                   value={reviewTitle}
                   onChange={(e) => setReviewTitle(e.target.value)}
                   placeholder="e.g. Excellent sound & craftsmanship"
-                  className="w-full p-2.5 rounded-lg border border-slate-200 outline-none focus:border-amber-400 text-slate-900 text-xs"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600/20 text-slate-900 text-xs"
                 />
               </div>
 
@@ -520,7 +589,7 @@ export default function OrdersPage() {
                   value={reviewBody}
                   onChange={(e) => setReviewBody(e.target.value)}
                   placeholder="What did you like or dislike about this product?"
-                  className="w-full p-2.5 rounded-lg border border-slate-200 outline-none focus:border-amber-400 text-slate-900 text-xs resize-none"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600/20 text-slate-900 text-xs resize-none"
                 />
               </div>
 
@@ -528,14 +597,14 @@ export default function OrdersPage() {
                 <button
                   type="button"
                   onClick={() => setReviewModalItem(null)}
-                  className="flex-1 py-2 rounded-xl border border-slate-200 text-slate-700 font-bold hover:bg-slate-50 cursor-pointer"
+                  className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-semibold hover:bg-slate-50 cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submittingReview}
-                  className="flex-1 py-2 rounded-xl bg-amber-400 hover:bg-amber-500 text-slate-950 font-black shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                  className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-semibold shadow-md shadow-indigo-600/20 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
                 >
                   {submittingReview ? <Loader2 size={13} className="animate-spin" /> : 'Submit Review'}
                 </button>

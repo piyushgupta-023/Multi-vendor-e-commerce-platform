@@ -21,6 +21,7 @@
    - [Module 6: Reviews, Coupons & PDF Invoices](#module-6-reviews-coupons--pdf-invoices)
    - [Module 7: Admin Analytics](#module-7-admin-analytics)
 6. [Environment Variables Reference](#6-environment-variables-reference)
+7. [Database Initialization and Migrations](#database-initialization-and-migrations)
 
 ---
 
@@ -1182,6 +1183,14 @@ export default mongoose.model('Coupon', couponSchema);
 
 ---
 
+### Delivery Location Lookup
+
+| Method | Endpoint | Auth Role | Request Body / Params | Response | Description |
+|--------|----------|-----------|----------------------|----------|-------------|
+| `GET` | `/api/location/pincode/:pincode` | Public | Path: 6-digit Indian PIN code | `{ pincode, officeName, district, state }` | Looks up the delivery district and state using the Indian postal-code directory. |
+
+---
+
 ### Module 4: Redis Cart & Order Lifecycle
 
 | Method | Endpoint | Auth Role | Request Body / Params | Response | Description |
@@ -1389,3 +1398,11 @@ INVOICE_LOGO_URL=https://yourdomain.com/logo.png
 ---
 
 *Last updated: Auto-generated as part of project initialization. Maintain this document alongside code changes.*
+
+## Database Initialization and Migrations
+
+The backend uses MongoDB through Mongoose. Set `MONGODB_URI` and `JWT_SECRET` in the ignored `server/.env` file; the server does not fall back to an in-memory database or a built-in signing secret. Database credentials and signing secrets must never be placed in client configuration.
+
+Run `npm run migrate` from `server/` to apply the versioned schema initialization explicitly. Server startup applies the same migration before opening the API listener. Migration `001-initialize-schema` creates declared indexes without dropping or synchronizing existing indexes and links existing products to Category documents through the new optional `categoryId` reference. Existing category strings remain available for API compatibility. Duplicate data that prevents a unique index from being created is reported; it is not automatically deleted or rewritten.
+
+`npm start` starts the API only after MongoDB connection and migration succeed. Demo/sample records are not created at startup. The optional `npm run seed` command is separate and does not purge collections.

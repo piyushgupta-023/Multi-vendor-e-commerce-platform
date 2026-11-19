@@ -1,60 +1,51 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
-const { sendError } = require('../utils/apiResponse');
+const { getJwtSecret } = require('../utils/jwt');
 
 /**
  * Protect middleware: verifies JWT Bearer token from authorization header
+ * and attaches user from MongoDB to req.user. If invalid, returns 401 'Not authorized'.
  */
 const protect = async (req, res, next) => {
+  let token;
+  const authHeader = req.headers.authorization;
+
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.split('Bearer ')[1]?.trim();
+  }
+
+  if (!token) {
+    return res.status(401).json({
+      success: false,
+      message: 'Not authorized',
+    });
+  }
+
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return sendError(res, 401, 'Access denied. No authentication token provided.');
-    }
+    const decoded = jwt.verify(token, getJwtSecret());
 
-    const token = authHeader.split(' ')[1];
-    if (!token) {
-      return sendError(res, 401, 'Access denied. Malformed authorization token.');
-    }
-
-    // Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'super_secret_jwt_key_marketnest_enterprise_2025');
-
-    // Handle mock demo tokens if DB is in fallback mode
-    if (decoded.isDemo && decoded.demoUser) {
-      req.user = decoded.demoUser;
-      return next();
-    }
-
-    // Verify user exists in database
     const user = await User.findById(decoded.id).select('-password');
     if (!user) {
-      // If user not in DB (e.g. demo session), construct from token payload
-      if (decoded.role && decoded.email) {
-        req.user = {
-          _id: decoded.id,
-          id: decoded.id,
-          name: decoded.name || 'Demo User',
-          email: decoded.email,
-          role: decoded.role,
-          isActive: true,
-        };
-        return next();
-      }
-      return sendError(res, 401, 'The user belonging to this token no longer exists.');
+      return res.status(401).json({
+        success: false,
+        message: 'Not authorized',
+      });
     }
 
     if (!user.isActive) {
-      return sendError(res, 403, 'Your account has been deactivated. Please contact support.');
+      return res.status(403).json({
+        success: false,
+        message: 'Account is deactivated. Contact platform support.',
+      });
     }
 
     req.user = user;
     next();
   } catch (err) {
-    if (err.name === 'TokenExpiredError') {
-      return sendError(res, 401, 'Your session has expired. Please log in again.');
-    }
-    return sendError(res, 401, 'Invalid authentication token. Authorization failed.');
+    return res.status(401).json({
+      success: false,
+      message: 'Not authorized',
+    });
   }
 };
 
@@ -65,16 +56,19 @@ const protect = async (req, res, next) => {
 const authorizeRoles = (...roles) => {
   return (req, res, next) => {
     if (!req.user || !req.user.role) {
-      return sendError(res, 401, 'User identity not established. Please log in.');
+      return res.status(401).json({
+        success: false,
+        message: 'Not authorized',
+      });
     }
 
     const userRole = req.user.role.toLowerCase();
-    const normalizedRoles = roles.map(r => r.toLowerCase());
+    const normalizedRoles = roles.map((r) => r.toLowerCase());
 
     if (!normalizedRoles.includes(userRole)) {
       return res.status(403).json({
         success: false,
-        message: `Forbidden. Role '${req.user.role}' does not have permission to access this resource.`,
+        message: `Forbidden: Role '${req.user.role}' is not authorized to access this resource`,
         requiredRoles: roles,
         userRole: req.user.role,
       });
@@ -84,7 +78,6 @@ const authorizeRoles = (...roles) => {
   };
 };
 
-// Aliases for compatibility
 const authorize = authorizeRoles;
 
 module.exports = {

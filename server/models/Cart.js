@@ -22,15 +22,12 @@ const cartSchema = new mongoose.Schema({
   totalItems: { type: Number, default: 0 },
 }, { timestamps: true });
 
-cartSchema.pre('save', function(next) {
+cartSchema.pre('save', function() {
   this.totalItems = this.items.reduce((sum, item) => sum + item.quantity, 0);
   this.totalAmount = this.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   if (this.couponApplied?.discountAmount) {
     this.totalAmount = Math.max(0, this.totalAmount - this.couponApplied.discountAmount);
   }
-  next();
 });
-
-cartSchema.index({ userId: 1 });
 
 module.exports = mongoose.model('Cart', cartSchema);

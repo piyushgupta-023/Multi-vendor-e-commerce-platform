@@ -4,7 +4,11 @@ const vendorController = require('../controllers/vendorController');
 const orderController = require('../controllers/orderController');
 const { protect, authorizeRoles } = require('../middlewares/authMiddleware');
 
-// All vendor routes are protected for Vendor and Admin roles
+// Public storefront listing for marketplace display (No auth required)
+router.get('/public', vendorController.getPublicVendors);
+router.get('/public/:id', vendorController.getPublicVendorById);
+
+// All subsequent vendor routes are protected for Vendor and Admin roles
 router.use(protect);
 router.use(authorizeRoles('vendor', 'admin'));
 

@@ -1,5 +1,5 @@
 const errorHandler = (err, req, res, next) => {
-  console.error('❌ Error:', err.message);
+  console.error('Request error:', err.message);
   
   // Mongoose validation error
   if (err.name === 'ValidationError') {
@@ -9,8 +9,12 @@ const errorHandler = (err, req, res, next) => {
   
   // Mongoose duplicate key
   if (err.code === 11000) {
-    const field = Object.keys(err.keyValue)[0];
+    const field = Object.keys(err.keyValue || {})[0] || 'Value';
     return res.status(409).json({ success: false, message: `${field} already exists` });
+  }
+
+  if (err.name === 'CastError') {
+    return res.status(400).json({ success: false, message: 'Invalid identifier or value' });
   }
   
   // JWT errors
@@ -18,10 +22,13 @@ const errorHandler = (err, req, res, next) => {
     return res.status(401).json({ success: false, message: 'Invalid token' });
   }
   
-  res.status(err.status || 500).json({
+  const status = err.status || 500;
+  res.status(status).json({
     success: false,
-    message: err.message || 'Internal server error',
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+    message: status >= 500 && process.env.NODE_ENV !== 'development'
+      ? 'Internal server error'
+      : err.message || 'Internal server error',
+    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
   });
 };
 

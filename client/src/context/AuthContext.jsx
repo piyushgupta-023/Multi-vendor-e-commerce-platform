@@ -1,7 +1,15 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import api from '../api/axios';
+import api from '../services/api';
 
 const AuthContext = createContext(null);
+
+const getAuthErrorMessage = (error, fallback) => {
+  if (!error.response) {
+    return 'Cannot reach the MarketNest server. Start the app from the project folder with `npm run dev`, then try again.';
+  }
+
+  return error.response.data?.message || fallback;
+};
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
@@ -14,7 +22,7 @@ export function AuthProvider({ children }) {
   });
 
   const [token, setToken] = useState(() => {
-    return localStorage.getItem('marketnest_token') || localStorage.getItem('accessToken') || null;
+    return localStorage.getItem('token') || localStorage.getItem('marketnest_token') || localStorage.getItem('accessToken') || null;
   });
 
   const [activeRole, setActiveRole] = useState(() => {
@@ -30,9 +38,10 @@ export function AuthProvider({ children }) {
 
   const [isLoading, setIsLoading] = useState(true);
 
-  // Sync token to api headers and localStorage
+  // Sync token to localStorage and state
   const saveSession = useCallback((newToken, newUser) => {
     if (newToken) {
+      localStorage.setItem('token', newToken);
       localStorage.setItem('marketnest_token', newToken);
       localStorage.setItem('accessToken', newToken);
       setToken(newToken);
@@ -45,6 +54,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   const clearSession = useCallback(() => {
+    localStorage.removeItem('token');
     localStorage.removeItem('marketnest_token');
     localStorage.removeItem('accessToken');
     localStorage.removeItem('marketnest_user');
@@ -53,11 +63,11 @@ export function AuthProvider({ children }) {
     setActiveRole('customer');
   }, []);
 
-  // Fetch current user on mount if token exists
+  // On initial app load, validate existing session via GET /api/auth/me
   useEffect(() => {
     let isMounted = true;
     const initAuth = async () => {
-      const storedToken = localStorage.getItem('marketnest_token') || localStorage.getItem('accessToken');
+      const storedToken = localStorage.getItem('token') || localStorage.getItem('marketnest_token') || localStorage.getItem('accessToken');
       if (!storedToken) {
         if (isMounted) setIsLoading(false);
         return;
@@ -65,15 +75,17 @@ export function AuthProvider({ children }) {
 
       try {
         const res = await api.get('/auth/me');
-        if (isMounted && res.data?.success && res.data.data?.user) {
-          setUser(res.data.data.user);
-          setActiveRole(res.data.data.user.role || 'customer');
-          localStorage.setItem('marketnest_user', JSON.stringify(res.data.data.user));
+        if (isMounted && res.data?.success) {
+          const fetchedUser = res.data.data?.user || res.data.data;
+          setUser(fetchedUser);
+          setActiveRole(fetchedUser.role || 'customer');
+          localStorage.setItem('marketnest_user', JSON.stringify(fetchedUser));
+        } else {
+          if (isMounted) clearSession();
         }
       } catch (err) {
-        // If error is 401, clear invalidated session
-        if (err.response?.status === 401) {
-          if (isMounted) clearSession();
+        if (isMounted && (err.response?.status === 401 || err.response?.status === 403)) {
+          clearSession();
         }
       } finally {
         if (isMounted) setIsLoading(false);
@@ -84,7 +96,7 @@ export function AuthProvider({ children }) {
     return () => { isMounted = false; };
   }, [clearSession]);
 
-  // Standard Login
+  // Real login API call
   const login = async (email, password) => {
     setIsLoading(true);
     try {
@@ -92,16 +104,16 @@ export function AuthProvider({ children }) {
       const { token: receivedToken, accessToken, user: receivedUser } = res.data.data;
       const validToken = receivedToken || accessToken;
       saveSession(validToken, receivedUser);
-      return { success: true, user: receivedUser };
+      return { success: true, user: receivedUser, token: validToken };
     } catch (err) {
-      const message = err.response?.data?.message || err.message || 'Login failed. Please check your credentials.';
+      const message = getAuthErrorMessage(err, 'Invalid credentials');
       return { success: false, error: message };
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Standard Registration (Customer or Vendor)
+  // Real register API call (customer or vendor)
   const register = async (registrationData) => {
     setIsLoading(true);
     try {
@@ -109,16 +121,81 @@ export function AuthProvider({ children }) {
       const { token: receivedToken, accessToken, user: receivedUser } = res.data.data;
       const validToken = receivedToken || accessToken;
       saveSession(validToken, receivedUser);
-      return { success: true, user: receivedUser };
+      return { success: true, user: receivedUser, token: validToken };
     } catch (err) {
-      const message = err.response?.data?.message || err.message || 'Registration failed. Please try again.';
+      const message = getAuthErrorMessage(err, 'Registration failed');
       return { success: false, error: message };
     } finally {
       setIsLoading(false);
     }
   };
 
-  // 1-Click Demo Login
+  // Firebase Authentication (Google Popup & Physical SMS OTP)
+  const firebaseLogin = async (firebaseData) => {
+    setIsLoading(true);
+    try {
+      const res = await api.post('/auth/firebase', firebaseData);
+      const { token: receivedToken, accessToken, user: receivedUser } = res.data.data;
+      const validToken = receivedToken || accessToken;
+      saveSession(validToken, receivedUser);
+      return { success: true, user: receivedUser, token: validToken };
+    } catch (err) {
+      const message = err.response?.data?.message || err.message || 'Firebase authentication failed';
+      return { success: false, error: message };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Google Auth
+  const googleLogin = async (googleData) => {
+    setIsLoading(true);
+    try {
+      const res = await api.post('/auth/google', googleData);
+      const { token: receivedToken, accessToken, user: receivedUser } = res.data.data;
+      const validToken = receivedToken || accessToken;
+      saveSession(validToken, receivedUser);
+      return { success: true, user: receivedUser, token: validToken };
+    } catch (err) {
+      const message = err.response?.data?.message || err.message || 'Google sign-in failed';
+      return { success: false, error: message };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Phone OTP send
+  const sendPhoneOtp = async (phone) => {
+    try {
+      const res = await api.post('/auth/phone/send-otp', { phone });
+      return { success: true, data: res.data?.data, message: res.data?.message };
+    } catch (err) {
+      const message = err.response?.data?.message || err.message || 'Failed to send OTP';
+      return { success: false, error: message };
+    }
+  };
+
+  // Phone OTP verify / Firebase Phone Auth
+  const verifyPhoneOtp = async (payloadOrPhone, otp, name) => {
+    setIsLoading(true);
+    try {
+      const payload = typeof payloadOrPhone === 'object' 
+        ? payloadOrPhone 
+        : { phone: payloadOrPhone, otp, name };
+      const res = await api.post('/auth/phone/verify', payload);
+      const { token: receivedToken, accessToken, user: receivedUser } = res.data.data;
+      const validToken = receivedToken || accessToken;
+      saveSession(validToken, receivedUser);
+      return { success: true, user: receivedUser, token: validToken };
+    } catch (err) {
+      const message = err.response?.data?.message || err.message || 'Phone authentication failed';
+      return { success: false, error: message };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // 1-Click Demo Login hitting real backend MongoDB endpoint
   const demoLogin = async (role = 'customer') => {
     setIsLoading(true);
     try {
@@ -126,17 +203,10 @@ export function AuthProvider({ children }) {
       const { token: receivedToken, accessToken, user: receivedUser } = res.data.data;
       const validToken = receivedToken || accessToken;
       saveSession(validToken, receivedUser);
-      return { success: true, user: receivedUser };
+      return { success: true, user: receivedUser, token: validToken };
     } catch (err) {
-      // In case server is completely offline, generate local demo session
-      const fallbackUsers = {
-        admin: { id: 'demo_admin', name: 'Super Admin', email: 'admin@marketplace.com', role: 'admin' },
-        vendor: { id: 'demo_vendor', name: 'TechNova Electronics', email: 'technova@marketplace.com', role: 'vendor', storeName: 'TechNova Electronics' },
-        customer: { id: 'demo_cust', name: 'Aarav Sharma', email: 'aarav.sharma@gmail.com', role: 'customer' },
-      };
-      const fallbackUser = fallbackUsers[role] || fallbackUsers.customer;
-      saveSession(`demo_offline_token_${role}`, fallbackUser);
-      return { success: true, user: fallbackUser };
+      const message = err.response?.data?.message || err.message || 'Demo login failed';
+      return { success: false, error: message };
     } finally {
       setIsLoading(false);
     }
@@ -151,27 +221,17 @@ export function AuthProvider({ children }) {
     }
   };
 
-  // Switch perspective (e.g. Admin or Vendor previewing Customer view)
+  // Switch perspective for admin or vendor previewing customer view
   const switchActiveRole = (newRole) => {
-    if (!user) {
-      // Guest clicking role can trigger demo login
-      demoLogin(newRole);
-      return;
-    }
-
-    // Admins can switch to any role
+    if (!user) return;
     if (user.role === 'admin') {
       setActiveRole(newRole);
       return;
     }
-
-    // Vendors can switch between vendor and customer
     if (user.role === 'vendor' && (newRole === 'vendor' || newRole === 'customer')) {
       setActiveRole(newRole);
       return;
     }
-
-    // Otherwise keep own role or perform demo switch
     setActiveRole(newRole);
   };
 
@@ -183,6 +243,10 @@ export function AuthProvider({ children }) {
     activeRole,
     login,
     register,
+    firebaseLogin,
+    googleLogin,
+    sendPhoneOtp,
+    verifyPhoneOtp,
     demoLogin,
     logout,
     switchActiveRole,

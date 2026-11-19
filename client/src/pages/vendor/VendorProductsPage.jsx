@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import api from '../../api/axios';
 import { useStore } from '../../store/useStore';
+import ProductImage from '../../components/ui/ProductImage';
 
 const categories = [
   'All',
@@ -292,7 +293,6 @@ export default function VendorProductsPage() {
               <tbody className="divide-y divide-slate-800/60">
                 {filteredProducts.map((p) => {
                   const id = p._id || p.id;
-                  const img = p.images?.[0]?.url || (typeof p.images?.[0] === 'string' ? p.images[0] : 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=100&fit=crop&q=80');
                   const isOut = p.stock <= 0;
                   const isLow = p.stock > 0 && p.stock <= 10;
 
@@ -301,11 +301,10 @@ export default function VendorProductsPage() {
                       {/* Product (Image + Title + SKU) */}
                       <td className="py-3.5 px-4">
                         <div className="flex items-center gap-3">
-                          <img
-                            src={img}
+                          <ProductImage
+                            product={p}
                             alt={p.name}
                             className="w-10 h-10 rounded-lg object-cover ring-1 ring-slate-800 flex-shrink-0"
-                            onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=100&fit=crop&q=80'; }}
                           />
                           <div className="min-w-0 max-w-sm">
                             <p className="font-semibold text-white truncate text-xs">{p.name || p.title}</p>

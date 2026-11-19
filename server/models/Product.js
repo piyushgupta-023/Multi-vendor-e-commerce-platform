@@ -10,6 +10,7 @@ const dimensionsSchema = new mongoose.Schema({
 const productSchema = new mongoose.Schema({
   vendorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   vendorProfileId: { type: mongoose.Schema.Types.ObjectId, ref: 'VendorProfile' },
+  categoryId: { type: mongoose.Schema.Types.ObjectId, ref: 'Category' },
   name: { type: String, required: true, trim: true, maxlength: 200 },
   description: { type: String, required: true, maxlength: 5000 },
   price: { type: Number, required: true, min: 0 },
@@ -41,6 +42,7 @@ const productSchema = new mongoose.Schema({
 
 productSchema.index({ vendorId: 1 });
 productSchema.index({ category: 1, subcategory: 1 });
+productSchema.index({ categoryId: 1, isActive: 1 });
 productSchema.index({ price: 1 });
 productSchema.index({ 'ratings.average': -1 });
 productSchema.index({ isFeatured: 1, isActive: 1 });

@@ -1,139 +1,94 @@
 import { Link } from 'react-router-dom';
-import { ShieldCheck, ArrowRight, CheckCircle2, RefreshCw, Store, Zap, Sparkles } from 'lucide-react';
+import { ShieldCheck, CheckCircle2, RefreshCw, Store, ArrowRight } from 'lucide-react';
 import HeroBanner from '../components/home/HeroBanner';
-import CategoryFeatureCards from '../components/home/CategoryFeatureCards';
 import CategorySection from '../components/home/CategorySection';
 import FeaturedProducts from '../components/home/FeaturedProducts';
 import FeaturedVendors from '../components/home/FeaturedVendors';
-import { useStore } from '../store/useStore';
-import { useAuth } from '../context/AuthContext';
 
 export default function HomePage() {
-  const { role: storeRole, setRole: setStoreRole, showToast } = useStore();
-  const { user, activeRole, switchActiveRole } = useAuth();
-
-  const role = activeRole || storeRole || user?.role || 'customer';
-
-  const handleRoleToggle = (newRole) => {
-    setStoreRole?.(newRole);
-    switchActiveRole?.(newRole);
-    showToast?.(`Switched to ${newRole === 'vendor' ? 'Merchant' : newRole === 'admin' ? 'Admin' : 'Buyer'} perspective`, 'info');
-  };
-
   return (
-    <div className="min-h-screen bg-[#eaeded] flex flex-col font-sans selection:bg-amber-400 selection:text-slate-950">
+    <div className="min-h-screen bg-slate-50 flex flex-col font-sans selection:bg-indigo-600 selection:text-white">
       
-      {/* 1. Perspective Banner (if in Merchant or Admin view) */}
-      {role !== 'customer' && (
-        <div className="bg-slate-950 text-white text-xs py-2 px-4 flex items-center justify-between border-b border-slate-800">
-          <div className="flex items-center gap-2 max-w-[1536px] mx-auto w-full">
-            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-            <span className="text-slate-300">
-              Active Marketplace Perspective:{' '}
-              <strong className="text-amber-400 uppercase font-black tracking-wide">
-                {role === 'vendor' ? 'Merchant / Seller' : 'Platform Administrator'}
-              </strong>
-            </span>
-            <button
-              onClick={() => handleRoleToggle('customer')}
-              className="text-xs text-indigo-400 hover:text-indigo-300 font-bold underline ml-3 cursor-pointer"
-            >
-              Switch back to Buyer View
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* 2. Dynamic Auto-Sliding Rich Hero Carousel */}
+      {/* 1. Dynamic Modern Hero Banner */}
       <HeroBanner />
 
-      {/* 3. Amazon-Style 4-Quadrant Category Feature Cards (Overlapping Hero) */}
-      <CategoryFeatureCards />
-
-      {/* 4. Category Pills Filter Bar */}
+      {/* 2. Category Navigation Bar Pills */}
       <CategorySection />
 
-      {/* 5. High-Density Product Catalog Grid */}
+      {/* 3. Product Catalog Grid with Sidebar Filters */}
       <FeaturedProducts />
 
-      {/* 6. Multi-Vendor Storefronts Showcase */}
+      {/* 4. Verified Merchant Storefronts */}
       <FeaturedVendors />
 
-      {/* 7. Seller Onboarding Callout Banner */}
-      <section className="max-w-[1536px] mx-auto px-3 sm:px-4 lg:px-6 py-6 w-full">
-        <div className="rounded-2xl border border-slate-300/80 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-6 sm:p-10 shadow-lg flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 relative overflow-hidden">
-          {/* Subtle Ambient Glow */}
-          <div className="absolute right-0 top-0 w-96 h-96 bg-amber-400/10 rounded-full blur-3xl pointer-events-none" />
-
-          <div className="space-y-2 max-w-2xl relative z-10">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/30 text-xs font-bold">
+      {/* 5. Clean, Spacious 'Sell on MarketNest' CTA */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
+        <div className="mn-merchant-cta rounded-[2rem] p-8 md:p-10 flex flex-col md:flex-row items-center justify-between gap-6 my-12 border">
+          <div className="space-y-2 max-w-xl text-center md:text-left">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/55 text-amber-900 text-xs font-semibold border border-white/75">
               <Store size={13} />
-              <span>Independent Maker Program</span>
+              <span>MarketNest Merchant Ecosystem</span>
             </div>
-            <h3 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
-              Sell to Millions. Maintain Direct Customer Relationships.
+            <h3 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900">
+              Sell Directly to Thousands of Buyers
             </h3>
-            <p className="text-xs sm:text-sm text-slate-300 leading-relaxed font-normal">
-              MarketNest gives verified makers dedicated storefronts, automated payment splits via Razorpay Route & Stripe Connect, and zero hidden platform fees.
+            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-normal">
+              List your products across Tech, Fashion, and Home Living. Enjoy automated multi-vendor order routing, real-time analytics, and guaranteed escrow settlements.
             </p>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 flex-shrink-0 relative z-10 w-full sm:w-auto">
+          <div className="flex-shrink-0 w-full sm:w-auto">
             <Link
-              to="/vendor/dashboard"
-              onClick={() => handleRoleToggle('vendor')}
-              className="px-6 py-3 rounded-xl bg-amber-400 hover:bg-amber-500 text-slate-950 text-xs font-black shadow-md transition-all text-center"
+              to="/vendor/register"
+              className="w-full sm:w-auto px-7 py-3.5 rounded-xl bg-amber-900 hover:bg-amber-950 text-white text-sm font-semibold transition-all shadow-lg shadow-amber-900/20 flex items-center justify-center gap-2 cursor-pointer"
             >
-              Open Merchant Store
-            </Link>
-            <Link
-              to="/register"
-              className="px-6 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold border border-white/20 transition-all text-center"
-            >
-              Apply as Maker
+              <span>Apply as a Merchant</span>
+              <ArrowRight size={16} />
             </Link>
           </div>
         </div>
       </section>
 
-      {/* 8. Trust & Buyer Escrow Guarantee Strip */}
-      <section className="max-w-[1536px] mx-auto px-3 sm:px-4 lg:px-6 py-10 w-full" id="escrow-trust">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-white p-6 sm:p-8 rounded-2xl border border-slate-200/90 shadow-2xs">
-          <div className="flex items-start gap-4">
-            <div className="w-11 h-11 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-700 flex-shrink-0">
+      {/* 6. Modern Trust & Guarantee Strip */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12 w-full" id="escrow-trust">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          
+          <div className="flex items-start gap-4 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md transition">
+            <div className="w-12 h-12 rounded-xl bg-indigo-50 border border-indigo-200/60 flex items-center justify-center text-indigo-600 flex-shrink-0 shadow-xs">
               <ShieldCheck size={22} />
             </div>
             <div>
               <h4 className="text-sm font-bold text-slate-900">Escrow Buyer Protection</h4>
               <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                Funds are held safely in escrow until the vendor fulfills delivery and you confirm condition of the package.
+                Funds are retained securely in escrow until each merchant fulfills delivery and you confirm the package.
               </p>
             </div>
           </div>
 
-          <div className="flex items-start gap-4">
-            <div className="w-11 h-11 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-700 flex-shrink-0">
+          <div className="flex items-start gap-4 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md transition">
+            <div className="w-12 h-12 rounded-xl bg-purple-50 border border-purple-200/60 flex items-center justify-center text-purple-600 flex-shrink-0 shadow-xs">
               <RefreshCw size={22} />
             </div>
             <div>
-              <h4 className="text-sm font-bold text-slate-900">Multi-Vendor Split Fulfillment</h4>
+              <h4 className="text-sm font-bold text-slate-900">Smart Split Routing</h4>
               <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                Orders with multiple sellers are automatically broken into trackable sub-orders with independent tracking IDs.
+                Cart items from multiple vendors are automatically partitioned into distinct sub-orders with independent tracking.
               </p>
             </div>
           </div>
 
-          <div className="flex items-start gap-4">
-            <div className="w-11 h-11 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700 flex-shrink-0">
+          <div className="flex items-start gap-4 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md transition">
+            <div className="w-12 h-12 rounded-xl bg-emerald-50 border border-emerald-200/60 flex items-center justify-center text-emerald-600 flex-shrink-0 shadow-xs">
               <CheckCircle2 size={22} />
             </div>
             <div>
-              <h4 className="text-sm font-bold text-slate-900">100% Genuine Certified</h4>
+              <h4 className="text-sm font-bold text-slate-900">100% Verified Merchants</h4>
               <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                Every merchant must pass identity, business registration, and bank verification before listing products.
+                Every merchant undergoes strict business and tax verification before their catalog is enabled for checkout.
               </p>
             </div>
           </div>
+
         </div>
       </section>
 
